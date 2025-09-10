@@ -2,62 +2,94 @@
 bitmap_base: .word 0x10010000
 color_azul: .word 0xFF0000FF
 color_negro: .word 0xFF000000
+gravedad: .word 2
+salto_inicial: .word -20
 
 .text
 .globl main
 
 main:
     li $s0, 50      # x jugador
-    li $s1, 50      # y jugador
+    li $s1, 200     # y jugador
+    li $s2, 0       # velY
 
 loop:
-    # Leer teclado
-    li $t1, 0xFFFF0000
-    lw $t2, 0($t1)
-    beq $t2, $zero, loop
-
-    li $t3, 0xFFFF0004
-    lw $t4, 0($t3)
-
-    # Guardar posición actual
+    # Guardar posición anterior
     move $t9, $s0
     move $t8, $s1
 
-    # Movimiento
+    # Leer teclado
+    li $t1, 0xFFFF0000
+    lw $t2, 0($t1)
+    bne $t2, $zero, leer_tecla
+
+    j aplicar_fisica
+
+leer_tecla:
+    li $t3, 0xFFFF0004
+    lw $t4, 0($t3)
+
+    # Salto con W
     li $t5, 119  # 'w'
-    beq $t4, $t5, move_up
-    li $t5, 115  # 's'
-    beq $t4, $t5, move_down
-    li $t5, 97   # 'a'
+    beq $t4, $t5, iniciar_salto
+
+    # Ignorar S
+    li $t5, 115
+    beq $t4, $t5, aplicar_fisica
+
+    # Movimiento horizontal
+    li $t5, 97
     beq $t4, $t5, move_left
-    li $t5, 100  # 'd'
+    li $t5, 100
     beq $t4, $t5, move_right
 
-    j loop
+    j aplicar_fisica
 
-move_up:
-    # Verificar límite superior
-    li $t0, 16
-    ble $s1, $t0, loop  # si ya está en 0, no mover
-    subi $s1, $s1, 16
-    j update
+iniciar_salto:
+    # Solo saltar si está en el suelo
+    li $t0, 200
+    bne $s1, $t0, aplicar_fisica
 
-move_down:
-    # Verificar límite inferior
-    li $t0, 240
-    bge $s1, $t0, loop  # si ya está en 240 o más, no mover
-    addi $s1, $s1, 16
-    j update
+    la $t1, salto_inicial
+    lw $s2, 0($t1)
+    j aplicar_fisica
 
 move_left:
-    subi $s0, $s0, 16
-    j update
+    li $t0, 0
+    ble $s0, $t0, aplicar_fisica
+    subi $s0, $s0, 4
+    j aplicar_fisica
 
 move_right:
-    addi $s0, $s0, 16
-    j update
+    li $t0, 240
+    bge $s0, $t0, aplicar_fisica
+    addi $s0, $s0, 4
+    j aplicar_fisica
 
-update:
+aplicar_fisica:
+    # Aplicar gravedad
+    la $t1, gravedad
+    lw $t2, 0($t1)
+    add $s2, $s2, $t2       # velY += gravedad
+    add $s1, $s1, $s2       # y += velY
+
+    # Límite inferior
+    li $t0, 200
+    bgt $s1, $t0, en_suelo
+    j actualizar
+
+en_suelo:
+    li $s1, 200
+    li $s2, 0
+    j actualizar
+
+actualizar:
+    # Solo redibujar si cambió la posición
+    bne $s0, $t9, redibujar
+    bne $s1, $t8, redibujar
+    j loop
+
+redibujar:
     # Borrar jugador anterior
     move $a0, $t9
     move $a1, $t8

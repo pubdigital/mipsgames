@@ -1,55 +1,85 @@
 .data
 bitmap_base: .word 0x10010000
-color_azul: .word 0xFF0000FF
+color_rojo: .word 0xFFFF0000      # Mario (rojo)
+color_verde: .word 0xFF00FF00     # Plataformas
+color_amarillo: .word 0xFFFFFF00  # Moneda
+color_marron: .word 0xFF8B4513    # Bloque
 color_negro: .word 0xFF000000
+
 gravedad: .word 2
 salto_inicial: .word -20
+velocidad_horizontal: .word 4
+
+# Plataformas: x, y, ancho, alto (cada plataforma ocupa 4 words)
+plataformas:
+    .word 0, 200, 256, 16      # Suelo principal
+    .word 100, 150, 60, 16     # Plataforma 1
+    .word 50, 100, 60, 16      # Plataforma 2
+    .word 180, 120, 60, 16     # Plataforma 3
+    .word -1, -1, -1, -1       # Terminador
+
+# Monedas: x, y, recolectada (0=no, 1=sí)
+monedas:
+    .word 120, 130, 0
+    .word 70, 80, 0
+    .word 200, 100, 0
+    .word -1, -1, -1           # Terminador
+
+puntos: .word 0
+msg_puntos: .asciiz "Puntos: "
+msg_victoria: .asciiz "\n¡GANASTE! Recolectaste todas las monedas!\n"
 
 .text
 .globl main
 
 main:
-    li $s0, 50      # x jugador
-    li $s1, 200     # y jugador
-    li $s2, 0       # velY
-
+    # Inicializar posición de Mario
+    li $s0, 50       # x jugador
+    li $s1, 180      # y jugador
+    li $s2, 0        # velY
+    li $s3, 0        # velX
+    
+    # Dibujar nivel inicial
+    jal draw_level
+    
 loop:
-    # Guardar posiciÃ³n anterior
+    # Guardar posición anterior
     move $t9, $s0
     move $t8, $s1
-
+    
     # Leer teclado
     li $t1, 0xFFFF0000
     lw $t2, 0($t1)
     bne $t2, $zero, leer_tecla
-
     j aplicar_fisica
 
 leer_tecla:
     li $t3, 0xFFFF0004
     lw $t4, 0($t3)
-
-    # Salto con W
+    
+    # Salto con W o espacio
     li $t5, 119  # 'w'
     beq $t4, $t5, iniciar_salto
-
-    # Ignorar S
-    li $t5, 115
-    beq $t4, $t5, aplicar_fisica
-
+    li $t5, 32   # espacio
+    beq $t4, $t5, iniciar_salto
+    
     # Movimiento horizontal
-    li $t5, 97
+    li $t5, 97   # 'a'
     beq $t4, $t5, move_left
-    li $t5, 100
+    li $t5, 100  # 'd'
     beq $t4, $t5, move_right
-
+    
+    # Salir
+    li $t5, 113  # 'q'
+    beq $t4, $t5, exit_game
+    
     j aplicar_fisica
 
 iniciar_salto:
-    # Solo saltar si estÃ¡ en el suelo
-    li $t0, 200
-    bne $s1, $t0, aplicar_fisica
-
+    # Verificar si está en una plataforma
+    jal check_on_platform
+    beq $v0, $zero, aplicar_fisica  # No está en plataforma, no saltar
+    
     la $t1, salto_inicial
     lw $s2, 0($t1)
     j aplicar_fisica
@@ -57,13 +87,17 @@ iniciar_salto:
 move_left:
     li $t0, 0
     ble $s0, $t0, aplicar_fisica
-    subi $s0, $s0, 4
+    la $t1, velocidad_horizontal
+    lw $t2, 0($t1)
+    sub $s0, $s0, $t2
     j aplicar_fisica
 
 move_right:
     li $t0, 240
     bge $s0, $t0, aplicar_fisica
-    addi $s0, $s0, 4
+    la $t1, velocidad_horizontal
+    lw $t2, 0($t1)
+    add $s0, $s0, $t2
     j aplicar_fisica
 
 aplicar_fisica:
@@ -72,19 +106,18 @@ aplicar_fisica:
     lw $t2, 0($t1)
     add $s2, $s2, $t2       # velY += gravedad
     add $s1, $s1, $s2       # y += velY
-
-    # LÃ­mite inferior
-    li $t0, 200
-    bgt $s1, $t0, en_suelo
-    j actualizar
-
-en_suelo:
-    li $s1, 200
-    li $s2, 0
-    j actualizar
-
+    
+    # Verificar colisión con plataformas
+    jal check_platform_collision
+    
+    # Verificar colisión con monedas
+    jal check_coin_collision
+    
+    # Verificar victoria
+    jal check_victory
+    
 actualizar:
-    # Solo redibujar si cambiÃ³ la posiciÃ³n
+    # Solo redibujar si cambió la posición
     bne $s0, $t9, redibujar
     bne $s1, $t8, redibujar
     j loop
@@ -96,41 +129,326 @@ redibujar:
     la $t0, color_negro
     lw $a2, 0($t0)
     jal draw_square
-
+    
     # Dibujar jugador nuevo
     move $a0, $s0
     move $a1, $s1
-    la $t0, color_azul
+    la $t0, color_rojo
     lw $a2, 0($t0)
     jal draw_square
-
+    
+    # Mostrar puntos
+    jal show_score
+    
     j loop
+
+exit_game:
+    li $v0, 10
+    syscall
 
 # Dibuja un cuadrado de 16x16 en (x=$a0, y=$a1) con color $a2
 draw_square:
     la $t0, bitmap_base
     lw $t0, 0($t0)
-
     li $t4, 0
 draw_row:
     li $t5, 0
 draw_col:
     add $t6, $a0, $t5
     add $t7, $a1, $t4
-
+    
+    # Verificar límites
+    blt $t6, 0, skip_pixel
+    bge $t6, 256, skip_pixel
+    blt $t7, 0, skip_pixel
+    bge $t7, 256, skip_pixel
+    
     li $t1, 256
     mul $t2, $t7, $t1
     add $t2, $t2, $t6
     sll $t2, $t2, 2
     add $t3, $t0, $t2
-
     sw $a2, 0($t3)
-
+    
+skip_pixel:
     addi $t5, $t5, 1
     li $t8, 16
     blt $t5, $t8, draw_col
-
     addi $t4, $t4, 1
     blt $t4, $t8, draw_row
+    jr $ra
 
+# Dibuja un rectángulo en (x=$a0, y=$a1) de tamaño (w=$a2, h=$a3) con color en $s7
+draw_rectangle:
+    la $t0, bitmap_base
+    lw $t0, 0($t0)
+    li $t4, 0
+rect_row:
+    bge $t4, $a3, rect_done
+    li $t5, 0
+rect_col:
+    bge $t5, $a2, rect_next_row
+    
+    add $t6, $a0, $t5
+    add $t7, $a1, $t4
+    
+    # Verificar límites
+    blt $t6, 0, rect_skip
+    bge $t6, 256, rect_skip
+    blt $t7, 0, rect_skip
+    bge $t7, 256, rect_skip
+    
+    li $t1, 256
+    mul $t2, $t7, $t1
+    add $t2, $t2, $t6
+    sll $t2, $t2, 2
+    add $t3, $t0, $t2
+    sw $s7, 0($t3)
+    
+rect_skip:
+    addi $t5, $t5, 1
+    j rect_col
+rect_next_row:
+    addi $t4, $t4, 1
+    j rect_row
+rect_done:
+    jr $ra
+
+# Dibuja el nivel completo
+draw_level:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    # Dibujar todas las plataformas
+    la $t0, plataformas
+draw_platforms_loop:
+    lw $a0, 0($t0)      # x
+    beq $a0, -1, platforms_done
+    
+    lw $a1, 4($t0)      # y
+    lw $a2, 8($t0)      # ancho
+    lw $a3, 12($t0)     # alto
+    
+    la $t1, color_verde
+    lw $s7, 0($t1)
+    
+    addi $sp, $sp, -4
+    sw $t0, 0($sp)
+    
+    jal draw_rectangle
+    
+    lw $t0, 0($sp)
+    addi $sp, $sp, 4
+    
+    addi $t0, $t0, 16   # Siguiente plataforma
+    j draw_platforms_loop
+
+platforms_done:
+    # Dibujar todas las monedas
+    la $t0, monedas
+draw_coins_loop:
+    lw $t1, 0($t0)      # x
+    beq $t1, -1, coins_done
+    
+    lw $t2, 8($t0)      # recolectada?
+    bne $t2, $zero, skip_coin
+    
+    move $a0, $t1       # x
+    lw $a1, 4($t0)      # y
+    la $t3, color_amarillo
+    lw $a2, 0($t3)
+    
+    addi $sp, $sp, -4
+    sw $t0, 0($sp)
+    
+    jal draw_square
+    
+    lw $t0, 0($sp)
+    addi $sp, $sp, 4
+
+skip_coin:
+    addi $t0, $t0, 12   # Siguiente moneda
+    j draw_coins_loop
+
+coins_done:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# Verifica si Mario está sobre una plataforma
+check_on_platform:
+    la $t0, plataformas
+check_plat_loop:
+    lw $t1, 0($t0)      # x plataforma
+    beq $t1, -1, not_on_platform
+    
+    lw $t2, 4($t0)      # y plataforma
+    lw $t3, 8($t0)      # ancho plataforma
+    
+    # Mario bottom
+    addi $t4, $s1, 16
+    
+    # Verificar si Mario está justo sobre la plataforma
+    bne $t4, $t2, next_check_plat
+    
+    # Verificar rango horizontal
+    add $t5, $s0, 16    # Mario right
+    blt $t5, $t1, next_check_plat
+    
+    add $t6, $t1, $t3   # Plataforma right
+    bgt $s0, $t6, next_check_plat
+    
+    # Está sobre esta plataforma
+    li $v0, 1
+    jr $ra
+
+next_check_plat:
+    addi $t0, $t0, 16
+    j check_plat_loop
+
+not_on_platform:
+    li $v0, 0
+    jr $ra
+
+# Verifica colisión con plataformas y ajusta posición
+check_platform_collision:
+    la $t0, plataformas
+coll_plat_loop:
+    lw $t1, 0($t0)      # x plataforma
+    beq $t1, -1, no_collision
+    
+    lw $t2, 4($t0)      # y plataforma
+    lw $t3, 8($t0)      # ancho plataforma
+    
+    # Mario bottom
+    addi $t4, $s1, 16
+    
+    # Si está cayendo y toca una plataforma desde arriba
+    blt $t4, $t2, next_coll_plat
+    sub $t5, $t4, $t2
+    bgt $t5, 8, next_coll_plat
+    
+    # Verificar rango horizontal
+    add $t5, $s0, 16    # Mario right
+    blt $t5, $t1, next_coll_plat
+    
+    add $t6, $t1, $t3   # Plataforma right
+    bgt $s0, $t6, next_coll_plat
+    
+    # Colisión detectada - ajustar posición
+    subi $s1, $t2, 16
+    li $s2, 0
+    jr $ra
+
+next_coll_plat:
+    addi $t0, $t0, 16
+    j coll_plat_loop
+
+no_collision:
+    jr $ra
+
+# Verifica colisión con monedas
+check_coin_collision:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    la $t0, monedas
+coin_loop:
+    lw $t1, 0($t0)      # x moneda
+    beq $t1, -1, coin_done
+    
+    lw $t2, 8($t0)      # recolectada?
+    bne $t2, $zero, next_coin
+    
+    # Verificar colisión simple (distancia)
+    lw $t2, 4($t0)      # y moneda
+    
+    sub $t3, $s0, $t1
+    abs $t3, $t3
+    bgt $t3, 20, next_coin
+    
+    sub $t4, $s1, $t2
+    abs $t4, $t4
+    bgt $t4, 20, next_coin
+    
+    # Colisión! Recolectar moneda
+    li $t5, 1
+    sw $t5, 8($t0)
+    
+    # Incrementar puntos
+    lw $t6, puntos
+    addi $t6, $t6, 10
+    sw $t6, puntos
+    
+    # Borrar moneda de la pantalla
+    move $a0, $t1
+    move $a1, $t2
+    la $t7, color_negro
+    lw $a2, 0($t7)
+    
+    addi $sp, $sp, -4
+    sw $t0, 0($sp)
+    jal draw_square
+    lw $t0, 0($sp)
+    addi $sp, $sp, 4
+
+next_coin:
+    addi $t0, $t0, 12
+    j coin_loop
+
+coin_done:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# Muestra la puntuación
+show_score:
+    li $v0, 4
+    la $a0, msg_puntos
+    syscall
+    
+    li $v0, 1
+    lw $a0, puntos
+    syscall
+    
+    li $v0, 11
+    li $a0, 10  # newline
+    syscall
+    
+    jr $ra
+
+# Verifica si ganó el juego
+check_victory:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    la $t0, monedas
+    li $t1, 0  # contador de monedas totales
+    li $t2, 0  # contador de monedas recolectadas
+    
+count_coins:
+    lw $t3, 0($t0)
+    beq $t3, -1, check_win
+    
+    addi $t1, $t1, 1
+    lw $t4, 8($t0)
+    add $t2, $t2, $t4
+    
+    addi $t0, $t0, 12
+    j count_coins
+
+check_win:
+    bne $t1, $t2, no_win
+    
+    # ¡Ganó!
+    li $v0, 4
+    la $a0, msg_victoria
+    syscall
+    
+    li $v0, 10
+    syscall
+
+no_win:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
     jr $ra

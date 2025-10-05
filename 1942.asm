@@ -1,27 +1,34 @@
-# Game 1942 - Version 1.2 - Con sistema de balas
+# Game 1942 - Version 1.0 - Con sistema de balas
 
 .data
     .align 2
     SCREEN_WIDTH:    .word 64
     SCREEN_HEIGHT:   .word 64
     
-    player_x:        .word 28
-    player_y:        .word 28
+    player_x:        .word 20
+    player_y:        .word 20
     
-    player_x_old:    .word 28
-    player_y_old:    .word 28
+    player_x_old:    .word 20
+    player_y_old:    .word 20
     
-    PLAYER_SIZE:     .word 7
+    PLAYER_SIZE:     .word 12      # Reducido a 12x8 (escala 50%)
+    PLAYER_HEIGHT:   .word 8
     MOVE_SPEED:      .word 2
     
     first_draw:      .word 1
     
-    # Sistema de balas
+    # Sistema de balas enemigas
     MAX_BULLETS:     .word 5
-    BULLET_SIZE:     .word 2
+    BULLET_SIZE:     .word 4           # Ahora 4x4
     BULLET_SPEED:    .word 1
     bullet_spawn_counter: .word 0
     BULLET_SPAWN_RATE:    .word 40
+    
+    # Sistema de balas del jugador
+    MAX_PLAYER_BULLETS: .word 10
+    PLAYER_BULLET_SIZE: .word 2
+    PLAYER_BULLET_SPEED: .word 2
+    player_can_shoot: .word 1
     
     # Sistema de vidas
     player_lives:    .word 3
@@ -34,13 +41,19 @@
     .word 0x000066CC
     .word 0x004499DD
     
-    plane_body:      .word 0x00CCCCCC
-    plane_dark:      .word 0x00888888
-    plane_red:       .word 0x00DD0000
-    plane_window:    .word 0x0044AAFF
-    bullet_color:    .word 0x00FF0000
+    # Colores del avión del jugador
+    plane_white:     .word 0x00FCFCFC    # Blanco (cuerpo)
+    plane_gray:      .word 0x00BCBCBC    # Gris (sombras)
+    plane_salmon:    .word 0x00FC7460    # Salmón (detalles)
     
-    # Array de balas (cada bala son 5 words: active, x, y, old_x, old_y)
+    # Colores del cañón (bala enemiga)
+    bullet_yellow:   .word 0x00F0BC3C    # Amarillo (bordes)
+    bullet_red:      .word 0x00D82800    # Rojo (centro)
+    
+    # Color de bala del jugador
+    player_bullet_color: .word 0x00FF0000  # Rojo
+    
+    # Array de balas enemigas (cada bala son 5 words: active, x, y, old_x, old_y)
     .align 2
     bullet_0: .word 0, 0, 0, 0, 0
     bullet_1: .word 0, 0, 0, 0, 0
@@ -48,15 +61,38 @@
     bullet_3: .word 0, 0, 0, 0, 0
     bullet_4: .word 0, 0, 0, 0, 0
     
+    # Array de balas del jugador
+    .align 2
+    player_bullet_0: .word 0, 0, 0, 0, 0
+    player_bullet_1: .word 0, 0, 0, 0, 0
+    player_bullet_2: .word 0, 0, 0, 0, 0
+    player_bullet_3: .word 0, 0, 0, 0, 0
+    player_bullet_4: .word 0, 0, 0, 0, 0
+    player_bullet_5: .word 0, 0, 0, 0, 0
+    player_bullet_6: .word 0, 0, 0, 0, 0
+    player_bullet_7: .word 0, 0, 0, 0, 0
+    player_bullet_8: .word 0, 0, 0, 0, 0
+    player_bullet_9: .word 0, 0, 0, 0, 0
+    
+    # Sprite del cañón 4x4 (0=transparente, 1=amarillo, 2=rojo)
+    .align 2
+    bullet_sprite:
+    .byte 0,1,1,0
+    .byte 1,2,2,1
+    .byte 1,2,2,1
+    .byte 0,1,1,0
+    
+    # Sprite del avión 12x8 (0=transparente, 1=gris, 2=blanco, 3=salmón) - escala 50%
     .align 2
     plane_sprite:
-    .byte 0,0,0,2,0,0,0
-    .byte 0,0,2,2,2,0,0
-    .byte 0,2,2,4,2,2,0
-    .byte 2,2,2,2,2,2,2
-    .byte 0,2,2,2,2,2,0
-    .byte 0,0,1,2,1,0,0
-    .byte 0,0,0,1,0,0,0
+    .byte 0,0,0,0,0,1,0,0,0,0,0,0
+    .byte 0,0,1,2,1,1,1,2,1,0,0,0
+    .byte 0,0,1,2,0,3,0,2,1,0,0,0
+    .byte 2,2,2,2,2,3,2,2,2,2,2,0
+    .byte 0,1,2,1,1,2,1,1,2,1,0,0
+    .byte 0,0,1,1,1,1,1,1,1,0,0,0
+    .byte 0,0,0,2,0,0,0,2,0,0,0,0
+    .byte 0,0,2,1,1,1,1,1,1,0,0,0
     
     .align 2
     wave_pattern:
@@ -97,16 +133,21 @@ main:
     jal draw_sea_full
     sw $zero, first_draw
     
+    # Dibujar jugador al inicio
+    jal draw_player_new
+    
 game_loop:
     lw $t0, game_over_flag
     bnez $t0, game_over
     
     jal process_input
     jal update_bullets
+    jal update_player_bullets
     jal spawn_bullet
     jal check_collisions
     jal draw_player_smart
     jal draw_bullets
+    jal draw_player_bullets
     jal update_invulnerability
     jal delay
     j game_loop
@@ -165,12 +206,12 @@ spawn_in_slot:
     syscall
     move $t3, $a0
     andi $t3, $t3, 0x3F
-    li $t4, 58
+    li $t4, 56                  # Ajustado para 4x4
     bgt $t3, $t4, spawn_adjust
     j spawn_set_pos
     
 spawn_adjust:
-    li $t3, 58
+    li $t3, 56
     
 spawn_set_pos:
     sw $t3, 4($t0)      # x
@@ -236,6 +277,315 @@ update_single_bullet:
 update_bullet_end:
     jr $ra
 
+# ===== DISPARAR BALA DEL JUGADOR =====
+spawn_player_bullet:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    # Verificar si puede disparar
+    lw $t0, player_can_shoot
+    beqz $t0, spawn_player_done
+    
+    # Buscar slot libre
+    la $t0, player_bullet_0
+    lw $t1, 0($t0)
+    beqz $t1, spawn_player_in_slot
+    
+    la $t0, player_bullet_1
+    lw $t1, 0($t0)
+    beqz $t1, spawn_player_in_slot
+    
+    la $t0, player_bullet_2
+    lw $t1, 0($t0)
+    beqz $t1, spawn_player_in_slot
+    
+    la $t0, player_bullet_3
+    lw $t1, 0($t0)
+    beqz $t1, spawn_player_in_slot
+    
+    la $t0, player_bullet_4
+    lw $t1, 0($t0)
+    beqz $t1, spawn_player_in_slot
+    
+    la $t0, player_bullet_5
+    lw $t1, 0($t0)
+    beqz $t1, spawn_player_in_slot
+    
+    la $t0, player_bullet_6
+    lw $t1, 0($t0)
+    beqz $t1, spawn_player_in_slot
+    
+    la $t0, player_bullet_7
+    lw $t1, 0($t0)
+    beqz $t1, spawn_player_in_slot
+    
+    la $t0, player_bullet_8
+    lw $t1, 0($t0)
+    beqz $t1, spawn_player_in_slot
+    
+    la $t0, player_bullet_9
+    lw $t1, 0($t0)
+    beqz $t1, spawn_player_in_slot
+    
+    j spawn_player_done
+
+spawn_player_in_slot:
+    # Activar bala
+    li $t2, 1
+    sw $t2, 0($t0)
+    
+    # Calcular posición (centro del avión)
+    lw $t3, player_x
+    lw $t4, PLAYER_SIZE
+    srl $t4, $t4, 1         # ancho / 2
+    add $t3, $t3, $t4
+    lw $t5, PLAYER_BULLET_SIZE
+    srl $t5, $t5, 1         # bullet_size / 2
+    sub $t3, $t3, $t5       # centrar
+    
+    lw $t4, player_y
+    
+    sw $t3, 4($t0)          # x
+    sw $t4, 8($t0)          # y
+    sw $t3, 12($t0)         # old_x
+    sw $t4, 16($t0)         # old_y
+
+spawn_player_done:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== ACTUALIZAR BALAS DEL JUGADOR =====
+update_player_bullets:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    la $t0, player_bullet_0
+    jal update_single_player_bullet
+    
+    la $t0, player_bullet_1
+    jal update_single_player_bullet
+    
+    la $t0, player_bullet_2
+    jal update_single_player_bullet
+    
+    la $t0, player_bullet_3
+    jal update_single_player_bullet
+    
+    la $t0, player_bullet_4
+    jal update_single_player_bullet
+    
+    la $t0, player_bullet_5
+    jal update_single_player_bullet
+    
+    la $t0, player_bullet_6
+    jal update_single_player_bullet
+    
+    la $t0, player_bullet_7
+    jal update_single_player_bullet
+    
+    la $t0, player_bullet_8
+    jal update_single_player_bullet
+    
+    la $t0, player_bullet_9
+    jal update_single_player_bullet
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+update_single_player_bullet:
+    lw $t1, 0($t0)
+    beqz $t1, update_player_bullet_end
+    
+    # Guardar posición anterior
+    lw $t2, 4($t0)
+    lw $t3, 8($t0)
+    sw $t2, 12($t0)
+    sw $t3, 16($t0)
+    
+    # Mover hacia arriba
+    lw $t4, PLAYER_BULLET_SPEED
+    sub $t3, $t3, $t4
+    sw $t3, 8($t0)
+    
+    # Desactivar si sale de pantalla
+    bltz $t3, deactivate_player_bullet
+    jr $ra
+
+deactivate_player_bullet:
+    sw $zero, 0($t0)
+
+update_player_bullet_end:
+    jr $ra
+
+# ===== DIBUJAR BALAS DEL JUGADOR =====
+draw_player_bullets:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    la $t0, player_bullet_0
+    jal draw_single_player_bullet
+    
+    la $t0, player_bullet_1
+    jal draw_single_player_bullet
+    
+    la $t0, player_bullet_2
+    jal draw_single_player_bullet
+    
+    la $t0, player_bullet_3
+    jal draw_single_player_bullet
+    
+    la $t0, player_bullet_4
+    jal draw_single_player_bullet
+    
+    la $t0, player_bullet_5
+    jal draw_single_player_bullet
+    
+    la $t0, player_bullet_6
+    jal draw_single_player_bullet
+    
+    la $t0, player_bullet_7
+    jal draw_single_player_bullet
+    
+    la $t0, player_bullet_8
+    jal draw_single_player_bullet
+    
+    la $t0, player_bullet_9
+    jal draw_single_player_bullet
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+draw_single_player_bullet:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    lw $t1, 0($t0)
+    beqz $t1, draw_single_player_end
+    
+    # Borrar posición anterior
+    lw $a0, 12($t0)
+    lw $a1, 16($t0)
+    jal erase_player_bullet
+    
+    # Dibujar en nueva posición
+    lw $a0, 4($t0)
+    lw $a1, 8($t0)
+    jal draw_player_bullet_at
+
+draw_single_player_end:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== BORRAR BALA DEL JUGADOR =====
+erase_player_bullet:
+    addi $sp, $sp, -20
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    
+    move $s0, $a0
+    move $s1, $a1
+    lw $s2, PLAYER_BULLET_SIZE
+    
+    la $s3, wave_pattern
+    la $t9, sea_colors
+    
+    li $t5, 0
+    
+erase_player_bullet_y:
+    bge $t5, $s2, erase_player_bullet_done_loop
+    
+    add $t8, $s1, $t5
+    andi $t2, $t8, 0xF
+    sll $t2, $t2, 5
+    add $t3, $s3, $t2
+    
+    li $t6, 0
+    
+erase_player_bullet_x:
+    bge $t6, $s2, erase_player_bullet_next_y
+    
+    add $t7, $s0, $t6
+    andi $s4, $t7, 0x1F
+    add $s5, $t3, $s4
+    lb $s5, 0($s5)
+    
+    sll $s6, $s5, 2
+    add $s6, $t9, $s6
+    lw $s6, 0($s6)
+    
+    add $s7, $s1, $t5
+    sll $s7, $s7, 6
+    add $s7, $s7, $s0
+    add $s7, $s7, $t6
+    sll $s7, $s7, 2
+    add $s7, $gp, $s7
+    
+    sw $s6, 0($s7)
+    
+    addi $t6, $t6, 1
+    j erase_player_bullet_x
+
+erase_player_bullet_next_y:
+    addi $t5, $t5, 1
+    j erase_player_bullet_y
+
+erase_player_bullet_done_loop:
+    lw $s3, 16($sp)
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr $ra
+
+# ===== DIBUJAR BALA DEL JUGADOR =====
+draw_player_bullet_at:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    move $t0, $a0
+    move $t1, $a1
+    lw $t2, PLAYER_BULLET_SIZE
+    lw $t3, player_bullet_color
+    
+    li $t4, 0
+    
+draw_player_bullet_y:
+    bge $t4, $t2, draw_player_bullet_done_loop
+    
+    li $t5, 0
+    
+draw_player_bullet_x:
+    bge $t5, $t2, draw_player_bullet_next_y
+    
+    add $t6, $t1, $t4
+    sll $t6, $t6, 6
+    add $t6, $t6, $t0
+    add $t6, $t6, $t5
+    sll $t6, $t6, 2
+    add $t6, $gp, $t6
+    
+    sw $t3, 0($t6)
+    
+    addi $t5, $t5, 1
+    j draw_player_bullet_x
+
+draw_player_bullet_next_y:
+    addi $t4, $t4, 1
+    j draw_player_bullet_y
+
+draw_player_bullet_done_loop:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
 # ===== DETECTAR COLISIONES =====
 check_collisions:
     addi $sp, $sp, -4
@@ -246,7 +596,6 @@ check_collisions:
     
     lw $t0, player_x
     lw $t1, player_y
-    lw $t2, PLAYER_SIZE
     
     # Verificar cada bala
     la $t3, bullet_0
@@ -277,13 +626,15 @@ check_bullet_collision:
     lw $t6, 8($t3)      # bullet_y
     lw $t7, BULLET_SIZE
     
-    # AABB collision detection
+    # AABB collision detection (usar PLAYER_SIZE para ancho)
+    lw $t2, PLAYER_SIZE
     add $t8, $t0, $t2   # player_right
     blt $t8, $t5, check_bullet_end
     
     add $t9, $t5, $t7   # bullet_right
     blt $t9, $t0, check_bullet_end
     
+    lw $t2, PLAYER_HEIGHT
     add $s0, $t1, $t2   # player_bottom
     blt $s0, $t6, check_bullet_end
     
@@ -452,30 +803,58 @@ draw_bullet_at:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     
-    move $t0, $a0
-    move $t1, $a1
-    lw $t2, BULLET_SIZE
-    lw $t3, bullet_color
+    move $t0, $a0           # x position
+    move $t1, $a1           # y position
+    lw $t2, BULLET_SIZE     # 4x4
     
-    li $t4, 0
+    la $s0, bullet_sprite   # Sprite data
+    lw $s1, bullet_yellow   # Amarillo
+    lw $s2, bullet_red      # Rojo
+    
+    li $t4, 0               # Y counter
     
 draw_bullet_y:
     bge $t4, $t2, draw_bullet_done_loop
     
-    li $t5, 0
+    li $t5, 0               # X counter
     
 draw_bullet_x:
     bge $t5, $t2, draw_bullet_next_y
     
-    add $t6, $t1, $t4
-    sll $t6, $t6, 6
-    add $t6, $t6, $t0
-    add $t6, $t6, $t5
-    sll $t6, $t6, 2
+    # Obtener índice del sprite (Y * 4 + X)
+    sll $t6, $t4, 2         # Y * 4
+    add $t6, $t6, $t5       # + X
+    add $t7, $s0, $t6
+    lb $t7, 0($t7)          # Valor del pixel
+    
+    # Si es 0, es transparente (no dibujar)
+    beqz $t7, skip_bullet_pixel
+    
+    # Seleccionar color según valor
+    li $t8, 1
+    beq $t7, $t8, use_bullet_yellow
+    li $t8, 2
+    beq $t7, $t8, use_bullet_red
+    j skip_bullet_pixel
+    
+use_bullet_yellow:
+    move $t3, $s1
+    j draw_bullet_pixel
+use_bullet_red:
+    move $t3, $s2
+    
+draw_bullet_pixel:
+    # Calcular offset en display
+    add $t6, $t1, $t4       # Y total
+    sll $t6, $t6, 6         # * 64
+    add $t6, $t6, $t0       # + X base
+    add $t6, $t6, $t5       # + X offset
+    sll $t6, $t6, 2         # * 4
     add $t6, $gp, $t6
     
     sw $t3, 0($t6)
     
+skip_bullet_pixel:
     addi $t5, $t5, 1
     j draw_bullet_x
 
@@ -566,20 +945,22 @@ draw_smart_done:
 
 # ===== BORRAR JUGADOR ANTERIOR =====
 erase_old_player:
-    addi $sp, $sp, -4
+    addi $sp, $sp, -8
     sw $ra, 0($sp)
+    sw $s7, 4($sp)
     
     lw $t0, player_x_old
     lw $t1, player_y_old
-    lw $t9, PLAYER_SIZE
+    lw $t9, PLAYER_SIZE      # ancho = 12
+    lw $s7, PLAYER_HEIGHT    # alto = 8
     
     la $s6, wave_pattern
-    la $s7, sea_colors
+    la $s5, sea_colors
     
     li $t5, 0
     
 erase_y_loop:
-    bge $t5, $t9, erase_done
+    bge $t5, $s7, erase_done
     
     add $t8, $t1, $t5
     andi $t2, $t8, 0xF
@@ -597,7 +978,7 @@ erase_x_loop:
     lb $s2, 0($s2)
     
     sll $s3, $s2, 2
-    add $s3, $s7, $s3
+    add $s3, $s5, $s3
     lw $s3, 0($s3)
     
     add $s4, $t1, $t5
@@ -617,70 +998,73 @@ erase_next_y:
     j erase_y_loop
 
 erase_done:
+    lw $s7, 4($sp)
     lw $ra, 0($sp)
-    addi $sp, $sp, 4
+    addi $sp, $sp, 8
     jr $ra
 
 # ===== DIBUJAR JUGADOR EN NUEVA POSICIÓN =====
 draw_player_new:
-    addi $sp, $sp, -4
+    addi $sp, $sp, -8
     sw $ra, 0($sp)
+    sw $s7, 4($sp)
     
     lw $t0, player_x
     lw $t1, player_y
-    lw $t9, PLAYER_SIZE
+    lw $t9, PLAYER_SIZE      # ancho = 12
+    lw $s7, PLAYER_HEIGHT    # alto = 8
     
     la $s0, plane_sprite
-    lw $s1, plane_dark
-    lw $s2, plane_body
-    lw $s3, plane_red
-    lw $s4, plane_window
+    lw $s1, plane_gray       # Gris
+    lw $s2, plane_white      # Blanco
+    lw $s3, plane_salmon     # Salmón
     
-    li $t5, 0
+    li $t5, 0                # Y counter
     
 new_y_loop:
-    bge $t5, $t9, new_done
+    bge $t5, $s7, new_done
     
-    li $t6, 0
+    li $t6, 0                # X counter
     
 new_x_loop:
     bge $t6, $t9, new_next_row
     
-    mul $t7, $t5, $t9
+    # Obtener índice del sprite (Y * 12 + X)
+    sll $t7, $t5, 3         # Y * 8
+    sll $a3, $t5, 2         # Y * 4
+    add $t7, $t7, $a3       # Y * 12
     add $t7, $t7, $t6
     add $t8, $s0, $t7
-    lb $t8, 0($t8)
+    lb $t8, 0($t8)           # Valor del pixel en sprite
     
+    # Si es 0, es transparente (no dibujar)
     beqz $t8, skip_pixel
     
+    # Seleccionar color según valor
     li $a0, 1
-    beq $t8, $a0, use_dark
+    beq $t8, $a0, use_gray
     li $a0, 2
-    beq $t8, $a0, use_body
+    beq $t8, $a0, use_white
     li $a0, 3
-    beq $t8, $a0, use_red
-    li $a0, 4
-    beq $t8, $a0, use_window
+    beq $t8, $a0, use_salmon
     j skip_pixel
     
-use_dark:
+use_gray:
     move $a1, $s1
     j draw_pixel
-use_body:
+use_white:
     move $a1, $s2
     j draw_pixel
-use_red:
+use_salmon:
     move $a1, $s3
-    j draw_pixel
-use_window:
-    move $a1, $s4
     
 draw_pixel:
-    add $a2, $t1, $t5
-    sll $a2, $a2, 6
-    add $a2, $a2, $t0
-    add $a2, $a2, $t6
-    sll $a2, $a2, 2
+    # Calcular offset en display
+    add $a2, $t1, $t5        # Y total
+    sll $a2, $a2, 6          # * 64
+    add $a2, $a2, $t0        # + X base
+    add $a2, $a2, $t6        # + X offset
+    sll $a2, $a2, 2          # * 4
     add $a2, $gp, $a2
     
     sw $a1, 0($a2)
@@ -694,8 +1078,9 @@ new_next_row:
     j new_y_loop
 
 new_done:
+    lw $s7, 4($sp)
     lw $ra, 0($sp)
-    addi $sp, $sp, 4
+    addi $sp, $sp, 8
     jr $ra
 
 # ===== PROCESAR INPUT =====
@@ -727,6 +1112,14 @@ process_input:
     beq $t2, $t3, move_right
     li $t3, 68
     beq $t2, $t3, move_right
+    li $t3, 106
+    beq $t2, $t3, shoot
+    li $t3, 74
+    beq $t2, $t3, shoot
+    j no_input
+
+shoot:
+    jal spawn_player_bullet
     j no_input
 
 move_up:
@@ -742,7 +1135,7 @@ move_down:
     lw $t1, MOVE_SPEED
     add $t0, $t0, $t1
     lw $t2, SCREEN_HEIGHT
-    lw $t3, PLAYER_SIZE
+    lw $t3, PLAYER_HEIGHT
     sub $t2, $t2, $t3
     bgt $t0, $t2, no_input
     sw $t0, player_y

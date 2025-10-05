@@ -17,25 +17,25 @@ Dentro de esta máquina virtual se programará y probará el juego en Assembler 
 
 ## 👥 Miembros del Grupo y Responsabilidades
 
-- **Integrante 1 – Coordinador y Líder de Proyecto**  
+- **Julián Ferrari – Coordinador y Líder de Proyecto**  
   - Organización del trabajo.  
   - Integración de los módulos y pruebas globales.  
   - Documentación (README y manuales de uso).
 
-- **Integrante 2 – Programador Gráfico (Sprites y Animaciones)**  
+- **Francisco Yucovsky – Programador Gráfico (Sprites y Animaciones)**  
   - Diseño e implementación de los sprites del avión, enemigos y explosiones.  
   - Desarrollo de animaciones (roll del avión, movimiento de enemigos, efectos visuales).  
 
-- **Integrante 3 – Programador de Lógica de Juego**  
+- **Julián Vaccari – Programador de Lógica de Juego**  
   - Movimiento del jugador en pantalla.  
   - Sistema de disparos (jugador y enemigos).  
   - Implementación de colisiones y detección de impactos.
 
-- **Integrante 4 – Programador de Sonido y Eventos**  
+- **María del Pilar Castro – Programador de Sonido y Eventos**  
   - Implementación de música de fondo y efectos de sonido.  
   - Manejo de eventos especiales (game over, power-ups, pantalla de inicio/fin).
 
-- **Integrante 5 – Tester y Optimizador**  
+- **Valentino Luchini – Tester y Optimizador**  
   - Pruebas unitarias y globales en cada versión.  
   - Optimización del código en ensamblador para mejorar el rendimiento.  
   - Reporte de errores y mejoras.

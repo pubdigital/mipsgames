@@ -1,32 +1,47 @@
-# Game 1942 - Version 1.0 - Con sistema de balas
+# Game 1942 - Version 2.0
 
 .data
     .align 2
     SCREEN_WIDTH:    .word 64
     SCREEN_HEIGHT:   .word 64
     
-    player_x:        .word 20
-    player_y:        .word 20
+    player_x:        .word 26
+    player_y:        .word 46
     
-    player_x_old:    .word 20
-    player_y_old:    .word 20
+    player_x_old:    .word 26
+    player_y_old:    .word 46
     
-    PLAYER_SIZE:     .word 12      # Reducido a 12x8 (escala 50%)
+    PLAYER_SIZE:     .word 12    
     PLAYER_HEIGHT:   .word 8
     MOVE_SPEED:      .word 2
     
     first_draw:      .word 1
     
+    # Sistema de scroll del mar
+    sea_scroll_offset: .word 0
+    sea_scroll_speed:  .word 1
+    sea_scroll_counter: .word 0
+    SEA_SCROLL_RATE:   .word 3    # Cada 3 frames
+    
     # Sistema de balas enemigas
     MAX_BULLETS:     .word 5
-    BULLET_SIZE:     .word 4           # Ahora 4x4
+    BULLET_SIZE:     .word 3           
     BULLET_SPEED:    .word 1
     bullet_spawn_counter: .word 0
     BULLET_SPAWN_RATE:    .word 40
     
+    # Sistema de aviones enemigos
+    MAX_ENEMIES:     .word 3
+    ENEMY_SIZE:      .word 3           
+    ENEMY_SPEED:     .word 1
+    enemy_spawn_counter: .word 0
+    ENEMY_SPAWN_RATE:    .word 50      
+    ENEMY_SHOOT_RATE:    .word 30      
+    
     # Sistema de balas del jugador
     MAX_PLAYER_BULLETS: .word 10
-    PLAYER_BULLET_SIZE: .word 2
+    PLAYER_BULLET_WIDTH: .word 1
+    PLAYER_BULLET_HEIGHT: .word 3
     PLAYER_BULLET_SPEED: .word 2
     player_can_shoot: .word 1
     
@@ -51,7 +66,11 @@
     bullet_red:      .word 0x00D82800    # Rojo (centro)
     
     # Color de bala del jugador
-    player_bullet_color: .word 0x00FF0000  # Rojo
+    player_bullet_yellow: .word 0x00F0BC3C  # Amarillo (punta)
+    player_bullet_red:    .word 0x00D82800  # Rojo (cuerpo)
+    
+    # Color de enemigos (temporalmente rojo)
+    enemy_color:     .word 0x00FF0000       # Rojo brillante
     
     # Array de balas enemigas (cada bala son 5 words: active, x, y, old_x, old_y)
     .align 2
@@ -60,6 +79,12 @@
     bullet_2: .word 0, 0, 0, 0, 0
     bullet_3: .word 0, 0, 0, 0, 0
     bullet_4: .word 0, 0, 0, 0, 0
+    
+    # Array de aviones enemigos (active, x, y, old_x, old_y, shoot_counter)
+    .align 2
+    enemy_0: .word 0, 0, 0, 0, 0, 0
+    enemy_1: .word 0, 0, 0, 0, 0, 0
+    enemy_2: .word 0, 0, 0, 0, 0, 0
     
     # Array de balas del jugador
     .align 2
@@ -74,13 +99,19 @@
     player_bullet_8: .word 0, 0, 0, 0, 0
     player_bullet_9: .word 0, 0, 0, 0, 0
     
-    # Sprite del cañón 4x4 (0=transparente, 1=amarillo, 2=rojo)
+    # Sprite de bala del jugador 1x3 (1=amarillo/punta, 2=rojo/cuerpo)
+    .align 2
+    player_bullet_sprite:
+    .byte 1
+    .byte 2
+    .byte 2
+    
+    # Sprite del cañón 3x3 (0=transparente, 1=amarillo, 2=rojo)
     .align 2
     bullet_sprite:
-    .byte 0,1,1,0
-    .byte 1,2,2,1
-    .byte 1,2,2,1
-    .byte 0,1,1,0
+    .byte 0,1,0
+    .byte 1,2,1
+    .byte 0,1,0
     
     # Sprite del avión 12x8 (0=transparente, 1=gris, 2=blanco, 3=salmón) - escala 50%
     .align 2
@@ -136,16 +167,32 @@ main:
     # Dibujar jugador al inicio
     jal draw_player_new
     
+    # Spawn inicial de un enemigo para prueba
+    la $t0, enemy_0
+    li $t1, 1
+    sw $t1, 0($t0)      
+    li $t1, 30
+    sw $t1, 4($t0)     
+    li $t1, 5
+    sw $t1, 8($t0)     
+    sw $t1, 12($t0)    
+    sw $t1, 16($t0)    
+    li $t1, 29
+    sw $t1, 20($t0)    
+    
 game_loop:
     lw $t0, game_over_flag
     bnez $t0, game_over
     
+    jal scroll_sea
     jal process_input
+    jal update_enemies
+    jal spawn_enemy
     jal update_bullets
     jal update_player_bullets
-    jal spawn_bullet
     jal check_collisions
     jal draw_player_smart
+    jal draw_enemies
     jal draw_bullets
     jal draw_player_bullets
     jal update_invulnerability
@@ -158,6 +205,100 @@ game_over:
     syscall
     li $v0, 10
     syscall
+
+# ===== SCROLL DEL MAR =====
+scroll_sea:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    # Incrementar contador
+    lw $t0, sea_scroll_counter
+    addi $t0, $t0, 1
+    sw $t0, sea_scroll_counter
+    
+    # Verificar si toca scrollear
+    lw $t1, SEA_SCROLL_RATE
+    blt $t0, $t1, scroll_done
+    
+    # Resetear contador
+    sw $zero, sea_scroll_counter
+    
+    # Incrementar offset
+    lw $t0, sea_scroll_offset
+    lw $t1, sea_scroll_speed
+    add $t0, $t0, $t1
+    
+    # Si llega a 16, resetear (tamaño del patrón)
+    li $t2, 16
+    blt $t0, $t2, scroll_save
+    sub $t0, $t0, $t2
+    
+scroll_save:
+    sw $t0, sea_scroll_offset
+    
+    # Redibujar mar completo con nuevo offset
+    jal draw_sea_scrolling
+    
+    # Redibujar todos los elementos después del scroll
+    jal draw_enemies
+    jal draw_bullets
+    jal draw_player_bullets
+    jal draw_player_new
+
+scroll_done:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== DIBUJAR MAR CON SCROLL =====
+draw_sea_scrolling:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    move $t0, $gp
+    la $t9, wave_pattern
+    la $s7, sea_colors
+    lw $s6, sea_scroll_offset
+    
+    li $t1, 0
+    
+sea_scroll_y_loop:
+    li $t8, 64
+    bge $t1, $t8, sea_scroll_done
+    
+    # Aplicar offset de scroll
+    add $t7, $t1, $s6
+    andi $t2, $t7, 0xF
+    sll $t2, $t2, 5
+    add $t3, $t9, $t2
+    
+    li $t4, 0
+    
+sea_scroll_x_loop:
+    li $t8, 64
+    bge $t4, $t8, sea_scroll_next_y
+    
+    andi $t5, $t4, 0x1F
+    add $t6, $t3, $t5
+    lb $t6, 0($t6)
+    
+    sll $t7, $t6, 2
+    add $t7, $s7, $t7
+    lw $t7, 0($t7)
+    
+    sw $t7, 0($t0)
+    addi $t0, $t0, 4
+    addi $t4, $t4, 1
+    j sea_scroll_x_loop
+
+sea_scroll_next_y:
+    addi $t1, $t1, 1
+    j sea_scroll_y_loop
+
+sea_scroll_done:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
 
 # ===== GENERAR NUEVA BALA =====
 spawn_bullet:
@@ -206,21 +347,362 @@ spawn_in_slot:
     syscall
     move $t3, $a0
     andi $t3, $t3, 0x3F
-    li $t4, 56                  # Ajustado para 4x4
+    li $t4, 59                  
     bgt $t3, $t4, spawn_adjust
     j spawn_set_pos
     
 spawn_adjust:
-    li $t3, 56
+    li $t3, 59
     
 spawn_set_pos:
-    sw $t3, 4($t0)      # x
+    sw $t3, 4($t0)     
     li $t4, 0
-    sw $t4, 8($t0)      # y = 0
-    sw $t3, 12($t0)     # old_x
-    sw $t4, 16($t0)     # old_y
+    sw $t4, 8($t0)  
+    sw $t3, 12($t0)    
+    sw $t4, 16($t0)     
 
 spawn_done:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== GENERAR ENEMIGO =====
+spawn_enemy:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    lw $t0, enemy_spawn_counter
+    addi $t0, $t0, 1
+    sw $t0, enemy_spawn_counter
+    
+    lw $t1, ENEMY_SPAWN_RATE
+    blt $t0, $t1, spawn_enemy_done
+    
+    sw $zero, enemy_spawn_counter
+    
+    # Buscar slot libre
+    la $t0, enemy_0
+    lw $t1, 0($t0)
+    beqz $t1, spawn_enemy_in_slot
+    
+    la $t0, enemy_1
+    lw $t1, 0($t0)
+    beqz $t1, spawn_enemy_in_slot
+    
+    la $t0, enemy_2
+    lw $t1, 0($t0)
+    beqz $t1, spawn_enemy_in_slot
+    
+    j spawn_enemy_done
+
+spawn_enemy_in_slot:
+    # Activar enemigo
+    li $t2, 1
+    sw $t2, 0($t0)
+    
+    # Posición X aleatoria
+    li $v0, 30
+    syscall
+    move $t3, $a0
+    andi $t3, $t3, 0x3F    
+    li $t4, 61             
+    bgt $t3, $t4, spawn_enemy_adjust
+    j spawn_enemy_set_pos
+    
+spawn_enemy_adjust:
+    li $t3, 30              
+    
+spawn_enemy_set_pos:
+    sw $t3, 4($t0)      
+    li $t4, 0
+    sw $t4, 8($t0)      
+    sw $t3, 12($t0)     
+    sw $t4, 16($t0)     
+    li $t5, 0
+    sw $t5, 20($t0)     
+
+spawn_enemy_done:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== ACTUALIZAR ENEMIGOS =====
+update_enemies:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    la $t0, enemy_0
+    jal update_single_enemy
+    
+    la $t0, enemy_1
+    jal update_single_enemy
+    
+    la $t0, enemy_2
+    jal update_single_enemy
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+update_single_enemy:
+    lw $t1, 0($t0)
+    beqz $t1, update_enemy_end
+    
+    # Guardar posición anterior
+    lw $t2, 4($t0)
+    lw $t3, 8($t0)
+    sw $t2, 12($t0)
+    sw $t3, 16($t0)
+    
+    # Mover hacia abajo
+    lw $t4, ENEMY_SPEED
+    add $t3, $t3, $t4
+    sw $t3, 8($t0)
+    
+    # Actualizar contador de disparo
+    lw $t5, 20($t0)
+    addi $t5, $t5, 1
+    sw $t5, 20($t0)
+    
+    # Verificar si debe disparar
+    lw $t6, ENEMY_SHOOT_RATE
+    blt $t5, $t6, check_enemy_bounds
+    
+    # Resetear contador y disparar
+    sw $zero, 20($t0)
+    
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    jal enemy_shoot
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    
+check_enemy_bounds:
+    # Desactivar si sale de pantalla
+    lw $t7, SCREEN_HEIGHT
+    bge $t3, $t7, deactivate_enemy
+    jr $ra
+
+deactivate_enemy:
+    addi $sp, $sp, -8
+    sw $ra, 0($sp)
+    sw $t0, 4($sp)
+    
+    lw $a0, 12($t0)
+    lw $a1, 16($t0)
+    jal erase_enemy
+    
+    lw $t0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 8
+    
+    sw $zero, 0($t0)
+    jr $ra
+
+update_enemy_end:
+    jr $ra
+
+# ===== ENEMIGO DISPARA =====
+enemy_shoot:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    # Buscar slot libre para bala
+    la $t1, bullet_0
+    lw $t2, 0($t1)
+    beqz $t2, enemy_shoot_in_slot
+    
+    la $t1, bullet_1
+    lw $t2, 0($t1)
+    beqz $t2, enemy_shoot_in_slot
+    
+    la $t1, bullet_2
+    lw $t2, 0($t1)
+    beqz $t2, enemy_shoot_in_slot
+    
+    la $t1, bullet_3
+    lw $t2, 0($t1)
+    beqz $t2, enemy_shoot_in_slot
+    
+    la $t1, bullet_4
+    lw $t2, 0($t1)
+    beqz $t2, enemy_shoot_in_slot
+    
+    j enemy_shoot_done
+
+enemy_shoot_in_slot:
+    # Activar bala
+    li $t3, 1
+    sw $t3, 0($t1)
+    
+    # Posición desde el enemigo
+    lw $t4, 4($t0)      
+    lw $t5, 8($t0)      
+    
+    # Centrar bala bajo el enemigo y ajustar Y
+    lw $t6, ENEMY_SIZE
+    add $t5, $t5, $t6   
+    
+    # Centrar en X
+    lw $t6, ENEMY_SIZE
+    srl $t6, $t6, 1
+    add $t4, $t4, $t6
+    lw $t6, BULLET_SIZE
+    srl $t6, $t6, 1
+    sub $t4, $t4, $t6
+    
+    sw $t4, 4($t1)      
+    sw $t5, 8($t1)      
+    sw $t4, 12($t1)     
+    sw $t5, 16($t1)     
+
+enemy_shoot_done:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== DIBUJAR ENEMIGOS =====
+draw_enemies:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    la $t0, enemy_0
+    jal draw_single_enemy
+    
+    la $t0, enemy_1
+    jal draw_single_enemy
+    
+    la $t0, enemy_2
+    jal draw_single_enemy
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+draw_single_enemy:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    lw $t1, 0($t0)
+    beqz $t1, draw_enemy_end
+    
+    # Borrar posición anterior
+    lw $a0, 12($t0)
+    lw $a1, 16($t0)
+    jal erase_enemy
+    
+    # Dibujar en nueva posición
+    lw $a0, 4($t0)
+    lw $a1, 8($t0)
+    jal draw_enemy_at
+
+draw_enemy_end:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== BORRAR ENEMIGO =====
+erase_enemy:
+    addi $sp, $sp, -20
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    
+    move $s0, $a0
+    move $s1, $a1
+    lw $s2, ENEMY_SIZE
+    
+    la $s3, wave_pattern
+    la $t9, sea_colors
+    
+    li $t5, 0
+    
+erase_enemy_y:
+    bge $t5, $s2, erase_enemy_done_loop
+    
+    add $t8, $s1, $t5
+    andi $t2, $t8, 0xF
+    sll $t2, $t2, 5
+    add $t3, $s3, $t2
+    
+    li $t6, 0
+    
+erase_enemy_x:
+    bge $t6, $s2, erase_enemy_next_y
+    
+    add $t7, $s0, $t6
+    andi $s4, $t7, 0x1F
+    add $s5, $t3, $s4
+    lb $s5, 0($s5)
+    
+    sll $s6, $s5, 2
+    add $s6, $t9, $s6
+    lw $s6, 0($s6)
+    
+    add $s7, $s1, $t5
+    sll $s7, $s7, 6
+    add $s7, $s7, $s0
+    add $s7, $s7, $t6
+    sll $s7, $s7, 2
+    add $s7, $gp, $s7
+    
+    sw $s6, 0($s7)
+    
+    addi $t6, $t6, 1
+    j erase_enemy_x
+
+erase_enemy_next_y:
+    addi $t5, $t5, 1
+    j erase_enemy_y
+
+erase_enemy_done_loop:
+    lw $s3, 16($sp)
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr $ra
+
+# ===== DIBUJAR ENEMIGO =====
+draw_enemy_at:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    move $t0, $a0
+    move $t1, $a1
+    lw $t2, ENEMY_SIZE
+    lw $t3, enemy_color
+    
+    li $t4, 0
+    
+draw_enemy_y:
+    bge $t4, $t2, draw_enemy_done_loop
+    
+    li $t5, 0
+    
+draw_enemy_x:
+    bge $t5, $t2, draw_enemy_next_y
+    
+    add $t6, $t1, $t4
+    sll $t6, $t6, 6
+    add $t6, $t6, $t0
+    add $t6, $t6, $t5
+    sll $t6, $t6, 2
+    add $t6, $gp, $t6
+    
+    sw $t3, 0($t6)
+    
+    addi $t5, $t5, 1
+    j draw_enemy_x
+
+draw_enemy_next_y:
+    addi $t4, $t4, 1
+    j draw_enemy_y
+
+draw_enemy_done_loop:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
@@ -271,8 +753,25 @@ update_single_bullet:
     
     # Desactivar si sale de pantalla
     lw $t5, SCREEN_HEIGHT
-    blt $t3, $t5, update_bullet_end
+    bge $t3, $t5, deactivate_bullet
+    jr $ra
+
+deactivate_bullet:
+    # Borrar bala antes de desactivar
+    addi $sp, $sp, -8
+    sw $ra, 0($sp)
+    sw $t0, 4($sp)
+    
+    lw $a0, 12($t0)
+    lw $a1, 16($t0)
+    jal erase_bullet
+    
+    lw $t0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 8
+    
     sw $zero, 0($t0)
+    jr $ra
 
 update_bullet_end:
     jr $ra
@@ -337,18 +836,18 @@ spawn_player_in_slot:
     # Calcular posición (centro del avión)
     lw $t3, player_x
     lw $t4, PLAYER_SIZE
-    srl $t4, $t4, 1         # ancho / 2
+    srl $t4, $t4, 1         
     add $t3, $t3, $t4
-    lw $t5, PLAYER_BULLET_SIZE
-    srl $t5, $t5, 1         # bullet_size / 2
-    sub $t3, $t3, $t5       # centrar
+    lw $t5, PLAYER_BULLET_WIDTH
+    srl $t5, $t5, 1        
+    sub $t3, $t3, $t5       
     
     lw $t4, player_y
     
-    sw $t3, 4($t0)          # x
-    sw $t4, 8($t0)          # y
-    sw $t3, 12($t0)         # old_x
-    sw $t4, 16($t0)         # old_y
+    sw $t3, 4($t0)          
+    sw $t4, 8($t0)          
+    sw $t3, 12($t0)         
+    sw $t4, 16($t0)         
 
 spawn_player_done:
     lw $ra, 0($sp)
@@ -414,7 +913,21 @@ update_single_player_bullet:
     jr $ra
 
 deactivate_player_bullet:
+    # Borrar bala antes de desactivar
+    addi $sp, $sp, -8
+    sw $ra, 0($sp)
+    sw $t0, 4($sp)
+    
+    lw $a0, 12($t0)
+    lw $a1, 16($t0)
+    jal erase_player_bullet
+    
+    lw $t0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 8
+    
     sw $zero, 0($t0)
+    jr $ra
 
 update_player_bullet_end:
     jr $ra
@@ -491,20 +1004,21 @@ erase_player_bullet:
     
     move $s0, $a0
     move $s1, $a1
-    lw $s2, PLAYER_BULLET_SIZE
+    lw $s2, PLAYER_BULLET_WIDTH
+    lw $s3, PLAYER_BULLET_HEIGHT
     
-    la $s3, wave_pattern
+    la $t8, wave_pattern
     la $t9, sea_colors
     
     li $t5, 0
     
 erase_player_bullet_y:
-    bge $t5, $s2, erase_player_bullet_done_loop
+    bge $t5, $s3, erase_player_bullet_done_loop
     
-    add $t8, $s1, $t5
-    andi $t2, $t8, 0xF
+    add $t7, $s1, $t5
+    andi $t2, $t7, 0xF
     sll $t2, $t2, 5
-    add $t3, $s3, $t2
+    add $t3, $t8, $t2
     
     li $t6, 0
     
@@ -550,30 +1064,55 @@ draw_player_bullet_at:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     
-    move $t0, $a0
-    move $t1, $a1
-    lw $t2, PLAYER_BULLET_SIZE
-    lw $t3, player_bullet_color
+    move $t0, $a0           
+    move $t1, $a1           
+    lw $t2, PLAYER_BULLET_WIDTH   
+    lw $t3, PLAYER_BULLET_HEIGHT  
     
-    li $t4, 0
+    la $s0, player_bullet_sprite
+    lw $s1, player_bullet_yellow  
+    lw $s2, player_bullet_red     
+    
+    li $t4, 0               
     
 draw_player_bullet_y:
-    bge $t4, $t2, draw_player_bullet_done_loop
+    bge $t4, $t3, draw_player_bullet_done_loop
     
-    li $t5, 0
+    li $t5, 0               
     
 draw_player_bullet_x:
     bge $t5, $t2, draw_player_bullet_next_y
     
-    add $t6, $t1, $t4
-    sll $t6, $t6, 6
-    add $t6, $t6, $t0
-    add $t6, $t6, $t5
-    sll $t6, $t6, 2
-    add $t6, $gp, $t6
+    # Obtener índice del sprite (Y * 1 + X)
+    add $t6, $t4, $t5       
+    add $t7, $s0, $t6
+    lb $t7, 0($t7)          
     
-    sw $t3, 0($t6)
+    # Seleccionar color según valor
+    li $t8, 1
+    beq $t7, $t8, use_player_yellow
+    li $t8, 2
+    beq $t7, $t8, use_player_red
+    j skip_player_bullet_pixel
     
+use_player_yellow:
+    move $t9, $s1
+    j draw_player_bullet_pixel
+use_player_red:
+    move $t9, $s2
+    
+draw_player_bullet_pixel:
+    # Calcular offset en display
+    add $s3, $t1, $t4      
+    sll $s3, $s3, 6       
+    add $s3, $s3, $t0      
+    add $s3, $s3, $t5      
+    sll $s3, $s3, 2        
+    add $s3, $gp, $s3
+    
+    sw $t9, 0($s3)
+    
+skip_player_bullet_pixel:
     addi $t5, $t5, 1
     j draw_player_bullet_x
 
@@ -622,23 +1161,23 @@ check_bullet_collision:
     lw $t4, 0($t3)
     beqz $t4, check_bullet_end
     
-    lw $t5, 4($t3)      # bullet_x
-    lw $t6, 8($t3)      # bullet_y
+    lw $t5, 4($t3)      
+    lw $t6, 8($t3)      
     lw $t7, BULLET_SIZE
     
     # AABB collision detection (usar PLAYER_SIZE para ancho)
     lw $t2, PLAYER_SIZE
-    add $t8, $t0, $t2   # player_right
+    add $t8, $t0, $t2   
     blt $t8, $t5, check_bullet_end
     
-    add $t9, $t5, $t7   # bullet_right
+    add $t9, $t5, $t7   
     blt $t9, $t0, check_bullet_end
     
     lw $t2, PLAYER_HEIGHT
-    add $s0, $t1, $t2   # player_bottom
+    add $s0, $t1, $t2   
     blt $s0, $t6, check_bullet_end
     
-    add $s1, $t6, $t7   # bullet_bottom
+    add $s1, $t6, $t7   
     blt $s1, $t1, check_bullet_end
     
     # Colisión detectada
@@ -803,29 +1342,30 @@ draw_bullet_at:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     
-    move $t0, $a0           # x position
-    move $t1, $a1           # y position
-    lw $t2, BULLET_SIZE     # 4x4
+    move $t0, $a0           
+    move $t1, $a1         
+    lw $t2, BULLET_SIZE    
     
-    la $s0, bullet_sprite   # Sprite data
-    lw $s1, bullet_yellow   # Amarillo
-    lw $s2, bullet_red      # Rojo
+    la $s0, bullet_sprite   
+    lw $s1, bullet_yellow   
+    lw $s2, bullet_red      
     
-    li $t4, 0               # Y counter
+    li $t4, 0              
     
 draw_bullet_y:
     bge $t4, $t2, draw_bullet_done_loop
     
-    li $t5, 0               # X counter
+    li $t5, 0               
     
 draw_bullet_x:
     bge $t5, $t2, draw_bullet_next_y
     
-    # Obtener índice del sprite (Y * 4 + X)
-    sll $t6, $t4, 2         # Y * 4
-    add $t6, $t6, $t5       # + X
+    # Obtener índice del sprite (Y * 3 + X)
+    sll $t6, $t4, 1        
+    add $t6, $t6, $t4       
+    add $t6, $t6, $t5       
     add $t7, $s0, $t6
-    lb $t7, 0($t7)          # Valor del pixel
+    lb $t7, 0($t7)          
     
     # Si es 0, es transparente (no dibujar)
     beqz $t7, skip_bullet_pixel
@@ -845,11 +1385,11 @@ use_bullet_red:
     
 draw_bullet_pixel:
     # Calcular offset en display
-    add $t6, $t1, $t4       # Y total
-    sll $t6, $t6, 6         # * 64
-    add $t6, $t6, $t0       # + X base
-    add $t6, $t6, $t5       # + X offset
-    sll $t6, $t6, 2         # * 4
+    add $t6, $t1, $t4      
+    sll $t6, $t6, 6        
+    add $t6, $t6, $t0       
+    add $t6, $t6, $t5      
+    sll $t6, $t6, 2         
     add $t6, $gp, $t6
     
     sw $t3, 0($t6)
@@ -951,8 +1491,8 @@ erase_old_player:
     
     lw $t0, player_x_old
     lw $t1, player_y_old
-    lw $t9, PLAYER_SIZE      # ancho = 12
-    lw $s7, PLAYER_HEIGHT    # alto = 8
+    lw $t9, PLAYER_SIZE      
+    lw $s7, PLAYER_HEIGHT    
     
     la $s6, wave_pattern
     la $s5, sea_colors
@@ -1011,31 +1551,31 @@ draw_player_new:
     
     lw $t0, player_x
     lw $t1, player_y
-    lw $t9, PLAYER_SIZE      # ancho = 12
-    lw $s7, PLAYER_HEIGHT    # alto = 8
+    lw $t9, PLAYER_SIZE      
+    lw $s7, PLAYER_HEIGHT  
     
     la $s0, plane_sprite
-    lw $s1, plane_gray       # Gris
-    lw $s2, plane_white      # Blanco
-    lw $s3, plane_salmon     # Salmón
+    lw $s1, plane_gray      
+    lw $s2, plane_white      
+    lw $s3, plane_salmon     
     
-    li $t5, 0                # Y counter
+    li $t5, 0                
     
 new_y_loop:
     bge $t5, $s7, new_done
     
-    li $t6, 0                # X counter
+    li $t6, 0                
     
 new_x_loop:
     bge $t6, $t9, new_next_row
     
     # Obtener índice del sprite (Y * 12 + X)
-    sll $t7, $t5, 3         # Y * 8
-    sll $a3, $t5, 2         # Y * 4
-    add $t7, $t7, $a3       # Y * 12
+    sll $t7, $t5, 3       
+    sll $a3, $t5, 2        
+    add $t7, $t7, $a3      
     add $t7, $t7, $t6
     add $t8, $s0, $t7
-    lb $t8, 0($t8)           # Valor del pixel en sprite
+    lb $t8, 0($t8)           
     
     # Si es 0, es transparente (no dibujar)
     beqz $t8, skip_pixel
@@ -1060,11 +1600,11 @@ use_salmon:
     
 draw_pixel:
     # Calcular offset en display
-    add $a2, $t1, $t5        # Y total
-    sll $a2, $a2, 6          # * 64
-    add $a2, $a2, $t0        # + X base
-    add $a2, $a2, $t6        # + X offset
-    sll $a2, $a2, 2          # * 4
+    add $a2, $t1, $t5        
+    sll $a2, $a2, 6          
+    add $a2, $a2, $t0       
+    add $a2, $a2, $t6        
+    sll $a2, $a2, 2          
     add $a2, $gp, $a2
     
     sw $a1, 0($a2)
@@ -1172,4 +1712,3 @@ delay_loop:
     bnez $t0, delay_loop
     jr $ra
     
-  

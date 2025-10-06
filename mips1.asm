@@ -29,6 +29,10 @@ puntos: .word 0
 msg_puntos: .asciiz "Puntos: "
 msg_victoria: .asciiz "\n¡GANASTE! Recolectaste todas las monedas!\n"
 
+# Variables para control de input
+last_key_pressed: .word 0
+input_cooldown: .word 0
+
 .text
 .globl main
 
@@ -47,18 +51,47 @@ loop:
     move $t9, $s0
     move $t8, $s1
     
+    # Decrementar cooldown de input
+    lw $t0, input_cooldown
+    beq $t0, $zero, check_input
+    subi $t0, $t0, 1
+    sw $t0, input_cooldown
+    j aplicar_fisica
+    
+check_input:
     # Leer teclado
     li $t1, 0xFFFF0000
     lw $t2, 0($t1)
-    bne $t2, $zero, leer_tecla
-    j aplicar_fisica
-
-leer_tecla:
+    andi $t2, $t2, 1
+    beq $t2, $zero, no_key_pressed
+    
+    # Hay tecla presionada
     li $t3, 0xFFFF0004
     lw $t4, 0($t3)
     
+    # Verificar si es la misma tecla que antes
+    lw $t5, last_key_pressed
+    beq $t4, $t5, aplicar_fisica
+    
+    # Es una tecla nueva, procesarla
+    sw $t4, last_key_pressed
+    
+    # Establecer cooldown (5 frames)
+    li $t6, 5
+    sw $t6, input_cooldown
+    
+    j leer_tecla
+    
+no_key_pressed:
+    # No hay tecla, resetear last_key
+    sw $zero, last_key_pressed
+    j aplicar_fisica
+
+leer_tecla:
     # Salto con W o espacio
     li $t5, 119  # 'w'
+    beq $t4, $t5, iniciar_salto
+    li $t5, 87   # 'W'
     beq $t4, $t5, iniciar_salto
     li $t5, 32   # espacio
     beq $t4, $t5, iniciar_salto
@@ -66,11 +99,17 @@ leer_tecla:
     # Movimiento horizontal
     li $t5, 97   # 'a'
     beq $t4, $t5, move_left
+    li $t5, 65   # 'A'
+    beq $t4, $t5, move_left
     li $t5, 100  # 'd'
+    beq $t4, $t5, move_right
+    li $t5, 68   # 'D'
     beq $t4, $t5, move_right
     
     # Salir
     li $t5, 113  # 'q'
+    beq $t4, $t5, exit_game
+    li $t5, 81   # 'Q'
     beq $t4, $t5, exit_game
     
     j aplicar_fisica
@@ -78,7 +117,7 @@ leer_tecla:
 iniciar_salto:
     # Verificar si está en una plataforma
     jal check_on_platform
-    beq $v0, $zero, aplicar_fisica  # No está en plataforma, no saltar
+    beq $v0, $zero, aplicar_fisica
     
     la $t1, salto_inicial
     lw $s2, 0($t1)
@@ -222,12 +261,12 @@ draw_level:
     # Dibujar todas las plataformas
     la $t0, plataformas
 draw_platforms_loop:
-    lw $a0, 0($t0)      # x
+    lw $a0, 0($t0)
     beq $a0, -1, platforms_done
     
-    lw $a1, 4($t0)      # y
-    lw $a2, 8($t0)      # ancho
-    lw $a3, 12($t0)     # alto
+    lw $a1, 4($t0)
+    lw $a2, 8($t0)
+    lw $a3, 12($t0)
     
     la $t1, color_verde
     lw $s7, 0($t1)
@@ -240,21 +279,21 @@ draw_platforms_loop:
     lw $t0, 0($sp)
     addi $sp, $sp, 4
     
-    addi $t0, $t0, 16   # Siguiente plataforma
+    addi $t0, $t0, 16
     j draw_platforms_loop
 
 platforms_done:
     # Dibujar todas las monedas
     la $t0, monedas
 draw_coins_loop:
-    lw $t1, 0($t0)      # x
+    lw $t1, 0($t0)
     beq $t1, -1, coins_done
     
-    lw $t2, 8($t0)      # recolectada?
+    lw $t2, 8($t0)
     bne $t2, $zero, skip_coin
     
-    move $a0, $t1       # x
-    lw $a1, 4($t0)      # y
+    move $a0, $t1
+    lw $a1, 4($t0)
     la $t3, color_amarillo
     lw $a2, 0($t3)
     
@@ -267,7 +306,7 @@ draw_coins_loop:
     addi $sp, $sp, 4
 
 skip_coin:
-    addi $t0, $t0, 12   # Siguiente moneda
+    addi $t0, $t0, 12
     j draw_coins_loop
 
 coins_done:
@@ -279,26 +318,22 @@ coins_done:
 check_on_platform:
     la $t0, plataformas
 check_plat_loop:
-    lw $t1, 0($t0)      # x plataforma
+    lw $t1, 0($t0)
     beq $t1, -1, not_on_platform
     
-    lw $t2, 4($t0)      # y plataforma
-    lw $t3, 8($t0)      # ancho plataforma
+    lw $t2, 4($t0)
+    lw $t3, 8($t0)
     
-    # Mario bottom
     addi $t4, $s1, 16
     
-    # Verificar si Mario está justo sobre la plataforma
     bne $t4, $t2, next_check_plat
     
-    # Verificar rango horizontal
-    add $t5, $s0, 16    # Mario right
+    add $t5, $s0, 16
     blt $t5, $t1, next_check_plat
     
-    add $t6, $t1, $t3   # Plataforma right
+    add $t6, $t1, $t3
     bgt $s0, $t6, next_check_plat
     
-    # Está sobre esta plataforma
     li $v0, 1
     jr $ra
 
@@ -314,28 +349,24 @@ not_on_platform:
 check_platform_collision:
     la $t0, plataformas
 coll_plat_loop:
-    lw $t1, 0($t0)      # x plataforma
+    lw $t1, 0($t0)
     beq $t1, -1, no_collision
     
-    lw $t2, 4($t0)      # y plataforma
-    lw $t3, 8($t0)      # ancho plataforma
+    lw $t2, 4($t0)
+    lw $t3, 8($t0)
     
-    # Mario bottom
     addi $t4, $s1, 16
     
-    # Si está cayendo y toca una plataforma desde arriba
     blt $t4, $t2, next_coll_plat
     sub $t5, $t4, $t2
     bgt $t5, 8, next_coll_plat
     
-    # Verificar rango horizontal
-    add $t5, $s0, 16    # Mario right
+    add $t5, $s0, 16
     blt $t5, $t1, next_coll_plat
     
-    add $t6, $t1, $t3   # Plataforma right
+    add $t6, $t1, $t3
     bgt $s0, $t6, next_coll_plat
     
-    # Colisión detectada - ajustar posición
     subi $s1, $t2, 16
     li $s2, 0
     jr $ra
@@ -354,14 +385,13 @@ check_coin_collision:
     
     la $t0, monedas
 coin_loop:
-    lw $t1, 0($t0)      # x moneda
+    lw $t1, 0($t0)
     beq $t1, -1, coin_done
     
-    lw $t2, 8($t0)      # recolectada?
+    lw $t2, 8($t0)
     bne $t2, $zero, next_coin
     
-    # Verificar colisión simple (distancia)
-    lw $t2, 4($t0)      # y moneda
+    lw $t2, 4($t0)
     
     sub $t3, $s0, $t1
     abs $t3, $t3
@@ -371,16 +401,13 @@ coin_loop:
     abs $t4, $t4
     bgt $t4, 20, next_coin
     
-    # Colisión! Recolectar moneda
     li $t5, 1
     sw $t5, 8($t0)
     
-    # Incrementar puntos
     lw $t6, puntos
     addi $t6, $t6, 10
     sw $t6, puntos
     
-    # Borrar moneda de la pantalla
     move $a0, $t1
     move $a1, $t2
     la $t7, color_negro
@@ -412,7 +439,7 @@ show_score:
     syscall
     
     li $v0, 11
-    li $a0, 10  # newline
+    li $a0, 10
     syscall
     
     jr $ra
@@ -423,8 +450,8 @@ check_victory:
     sw $ra, 0($sp)
     
     la $t0, monedas
-    li $t1, 0  # contador de monedas totales
-    li $t2, 0  # contador de monedas recolectadas
+    li $t1, 0
+    li $t2, 0
     
 count_coins:
     lw $t3, 0($t0)
@@ -440,7 +467,6 @@ count_coins:
 check_win:
     bne $t1, $t2, no_win
     
-    # ¡Ganó!
     li $v0, 4
     la $a0, msg_victoria
     syscall

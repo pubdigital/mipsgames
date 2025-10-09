@@ -1,4 +1,4 @@
-# Game 1942 - Version 1.2 - Con sistema de balas
+# Game 1942 - Version 2.0
 
 .data
     .align 2
@@ -208,6 +208,7 @@ game_loop:
     jal update_bullets
     jal update_player_bullets
     jal check_collisions
+    jal check_bullet_enemy_collisions
     jal draw_player_smart
     jal draw_enemies
     jal draw_bullets
@@ -1218,7 +1219,7 @@ check_collisions:
     
     la $t3, bullet_4
     jal check_bullet_collision
-
+    
 collision_done:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
@@ -1255,6 +1256,218 @@ check_bullet_collision:
     addi $sp, $sp, 4
 
 check_bullet_end:
+    jr $ra
+
+# ===== DETECTAR COLISIONES BALA-ENEMIGO =====
+check_bullet_enemy_collisions:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    # Verificar bullet_0
+    la $a0, player_bullet_0
+    la $a1, enemy_0
+    jal test_bullet_hit_enemy
+    la $a0, player_bullet_0
+    la $a1, enemy_1
+    jal test_bullet_hit_enemy
+    la $a0, player_bullet_0
+    la $a1, enemy_2
+    jal test_bullet_hit_enemy
+    
+    # Verificar bullet_1
+    la $a0, player_bullet_1
+    la $a1, enemy_0
+    jal test_bullet_hit_enemy
+    la $a0, player_bullet_1
+    la $a1, enemy_1
+    jal test_bullet_hit_enemy
+    la $a0, player_bullet_1
+    la $a1, enemy_2
+    jal test_bullet_hit_enemy
+    
+    # Verificar bullet_2
+    la $a0, player_bullet_2
+    la $a1, enemy_0
+    jal test_bullet_hit_enemy
+    la $a0, player_bullet_2
+    la $a1, enemy_1
+    jal test_bullet_hit_enemy
+    la $a0, player_bullet_2
+    la $a1, enemy_2
+    jal test_bullet_hit_enemy
+    
+    # Verificar bullet_3
+    la $a0, player_bullet_3
+    la $a1, enemy_0
+    jal test_bullet_hit_enemy
+    la $a0, player_bullet_3
+    la $a1, enemy_1
+    jal test_bullet_hit_enemy
+    la $a0, player_bullet_3
+    la $a1, enemy_2
+    jal test_bullet_hit_enemy
+    
+    # Verificar bullet_4
+    la $a0, player_bullet_4
+    la $a1, enemy_0
+    jal test_bullet_hit_enemy
+    la $a0, player_bullet_4
+    la $a1, enemy_1
+    jal test_bullet_hit_enemy
+    la $a0, player_bullet_4
+    la $a1, enemy_2
+    jal test_bullet_hit_enemy
+    
+    # Verificar bullet_5
+    la $a0, player_bullet_5
+    la $a1, enemy_0
+    jal test_bullet_hit_enemy
+    la $a0, player_bullet_5
+    la $a1, enemy_1
+    jal test_bullet_hit_enemy
+    la $a0, player_bullet_5
+    la $a1, enemy_2
+    jal test_bullet_hit_enemy
+    
+    # Verificar bullet_6
+    la $a0, player_bullet_6
+    la $a1, enemy_0
+    jal test_bullet_hit_enemy
+    la $a0, player_bullet_6
+    la $a1, enemy_1
+    jal test_bullet_hit_enemy
+    la $a0, player_bullet_6
+    la $a1, enemy_2
+    jal test_bullet_hit_enemy
+    
+    # Verificar bullet_7
+    la $a0, player_bullet_7
+    la $a1, enemy_0
+    jal test_bullet_hit_enemy
+    la $a0, player_bullet_7
+    la $a1, enemy_1
+    jal test_bullet_hit_enemy
+    la $a0, player_bullet_7
+    la $a1, enemy_2
+    jal test_bullet_hit_enemy
+    
+    # Verificar bullet_8
+    la $a0, player_bullet_8
+    la $a1, enemy_0
+    jal test_bullet_hit_enemy
+    la $a0, player_bullet_8
+    la $a1, enemy_1
+    jal test_bullet_hit_enemy
+    la $a0, player_bullet_8
+    la $a1, enemy_2
+    jal test_bullet_hit_enemy
+    
+    # Verificar bullet_9
+    la $a0, player_bullet_9
+    la $a1, enemy_0
+    jal test_bullet_hit_enemy
+    la $a0, player_bullet_9
+    la $a1, enemy_1
+    jal test_bullet_hit_enemy
+    la $a0, player_bullet_9
+    la $a1, enemy_2
+    jal test_bullet_hit_enemy
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+test_bullet_hit_enemy:
+    addi $sp, $sp, -32
+    sw $ra, 0($sp)
+    sw $a0, 4($sp)
+    sw $a1, 8($sp)
+    sw $t0, 12($sp)
+    sw $t1, 16($sp)
+    sw $t2, 20($sp)
+    sw $t3, 24($sp)
+    sw $t8, 28($sp)
+    
+    move $t8, $a0           # bullet pointer
+    move $t9, $a1           # enemy pointer
+    
+    # Verificar si bala está activa
+    lw $t0, 0($t8)
+    beqz $t0, test_end
+    
+    # Verificar si enemigo está activo
+    lw $t0, 0($t9)
+    beqz $t0, test_end
+    
+    # Obtener posiciones
+    lw $t0, 4($t8)          # bullet_x
+    lw $t1, 8($t8)          # bullet_y
+    lw $t2, 4($t9)          # enemy_x
+    lw $t3, 8($t9)          # enemy_y
+    
+    # Calcular límites
+    lw $t4, PLAYER_BULLET_WIDTH
+    add $t4, $t0, $t4       # bullet_right
+    
+    lw $t5, ENEMY_SIZE
+    add $t5, $t2, $t5       # enemy_right
+    
+    # Colisión en X?
+    blt $t4, $t2, test_end  # bullet_right < enemy_left
+    blt $t5, $t0, test_end  # enemy_right < bullet_left
+    
+    # Calcular límites Y
+    lw $t4, PLAYER_BULLET_HEIGHT
+    add $t4, $t1, $t4       # bullet_bottom
+    
+    lw $t5, ENEMY_SIZE
+    add $t5, $t3, $t5       # enemy_bottom
+    
+    # Colisión en Y?
+    blt $t4, $t3, test_end  # bullet_bottom < enemy_top
+    blt $t5, $t1, test_end  # enemy_bottom < bullet_top
+    
+    # ¡HAY COLISIÓN!
+    # Guardar punteros antes de borrar
+    addi $sp, $sp, -8
+    sw $t8, 0($sp)
+    sw $t9, 4($sp)
+    
+    # Borrar enemigo
+    lw $a0, 12($t9)
+    lw $a1, 16($t9)
+    jal erase_enemy
+    
+    # Restaurar punteros
+    lw $t9, 4($sp)
+    lw $t8, 0($sp)
+    
+    # Desactivar enemigo
+    sw $zero, 0($t9)
+    
+    # Borrar bala
+    lw $a0, 12($t8)
+    lw $a1, 16($t8)
+    jal erase_player_bullet
+    
+    # Restaurar punteros de nuevo
+    lw $t9, 4($sp)
+    lw $t8, 0($sp)
+    addi $sp, $sp, 8
+    
+    # Desactivar bala
+    sw $zero, 0($t8)
+
+test_end:
+    lw $t8, 28($sp)
+    lw $t3, 24($sp)
+    lw $t2, 20($sp)
+    lw $t1, 16($sp)
+    lw $t0, 12($sp)
+    lw $a1, 8($sp)
+    lw $a0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 32
     jr $ra
 
 # ===== MANEJAR IMPACTO =====

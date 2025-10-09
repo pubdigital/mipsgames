@@ -1,4 +1,4 @@
-# Game 1942 - Version 2.0
+# Game 1942 - Version 1.2 - Con sistema de balas
 
 .data
     .align 2
@@ -48,6 +48,8 @@
     
     # Sistema de vidas
     player_lives:    .word 3
+    player_score:    .word 0
+    POINTS_PER_KILL: .word 50
     game_over_flag:  .word 0
     invulnerable_counter: .word 0
     INVULNERABLE_TIME:    .word 60
@@ -164,6 +166,8 @@
     msg_init:        .asciiz "=== 1942 v1.2 ===\n"
     msg_controls:    .asciiz "W/A/S/D - Esquiva las balas!\n"
     msg_lives:       .asciiz "Vidas: "
+    msg_score:       .asciiz "Puntos: "
+    msg_kill:        .asciiz "+50 pts!\n"
     msg_game_over:   .asciiz "\n*** GAME OVER ***\n"
     newline:         .asciiz "\n"
     
@@ -175,6 +179,16 @@ main:
     la $a0, msg_init
     syscall
     la $a0, msg_controls
+    syscall
+    
+    li $v0, 4
+    la $a0, msg_score
+    syscall
+    li $v0, 1
+    lw $a0, player_score
+    syscall
+    li $v0, 4
+    la $a0, newline
     syscall
     
     jal draw_sea_full
@@ -221,6 +235,18 @@ game_over:
     li $v0, 4
     la $a0, msg_game_over
     syscall
+    
+    # Mostrar puntaje final
+    li $v0, 4
+    la $a0, msg_score
+    syscall
+    li $v0, 1
+    lw $a0, player_score
+    syscall
+    li $v0, 4
+    la $a0, newline
+    syscall
+    
     li $v0, 10
     syscall
 
@@ -1432,6 +1458,28 @@ test_bullet_hit_enemy:
     addi $sp, $sp, -8
     sw $t8, 0($sp)
     sw $t9, 4($sp)
+    
+    # Sumar puntos
+    lw $t6, player_score
+    lw $t7, POINTS_PER_KILL
+    add $t6, $t6, $t7
+    sw $t6, player_score
+    
+    # Mostrar mensaje de puntos
+    li $v0, 4
+    la $a0, msg_kill
+    syscall
+    
+    # Mostrar puntaje actualizado
+    li $v0, 4
+    la $a0, msg_score
+    syscall
+    li $v0, 1
+    lw $a0, player_score
+    syscall
+    li $v0, 4
+    la $a0, newline
+    syscall
     
     # Borrar enemigo
     lw $a0, 12($t9)

@@ -1,4 +1,4 @@
-# Game 1942 - Version 1.2 - Con sistema de balas
+# Game 1942 - Version 2.0 
 
 .data
     .align 2
@@ -39,6 +39,12 @@
     ENEMY_SPAWN_RATE:    .word 50
     ENEMY_SHOOT_RATE:    .word 30
     
+    # Después de ENEMY_SHOOT_RATE
+    ENEMY_TYPE_2_SIZE:   .word 11        # 11x11 (tamaño real del sprite)
+    enemy_type_2_speed:  .word 1        # Misma velocidad
+    enemy_spawn_count:   .word 0        # Contador de spawns
+    SPAWN_TYPE_2_EVERY:  .word 5        # Cada 5 enemigos
+    
     # Sistema de balas del jugador
     MAX_PLAYER_BULLETS: .word 10
     PLAYER_BULLET_WIDTH: .word 1
@@ -77,6 +83,11 @@
     enemy_gray_dark:  .word 0x00747474  # Gris oscuro (sombras)
     enemy_red:        .word 0x00D82800  # Rojo (cabina)
     
+    # Colores del enemigo tipo 2
+    enemy2_green_light: .word 0x0080CF10  # Verde claro (cuerpo)
+    enemy2_green_dark:  .word 0x00009300  # Verde oscuro (sombras)
+    enemy2_red:         .word 0x00D82800  # Rojo (cabina)
+    
     # Array de balas enemigas (cada bala son 5 words: active, x, y, old_x, old_y)
     .align 2
     bullet_0: .word 0, 0, 0, 0, 0
@@ -87,9 +98,9 @@
     
     # Array de aviones enemigos (active, x, y, old_x, old_y, shoot_counter, move_counter)
     .align 2
-    enemy_0: .word 0, 0, 0, 0, 0, 0, 0
-    enemy_1: .word 0, 0, 0, 0, 0, 0, 0
-    enemy_2: .word 0, 0, 0, 0, 0, 0, 0
+    enemy_0: .word 0, 0, 0, 0, 0, 0, 0, 0
+    enemy_1: .word 0, 0, 0, 0, 0, 0, 0, 0
+    enemy_2: .word 0, 0, 0, 0, 0, 0, 0, 0
     
     # Array de balas del jugador
     .align 2
@@ -123,6 +134,24 @@
     .byte 0,1,1,1,3,1,1,1,0
     .byte 0,0,0,1,1,1,0,0,0
     .byte 0,0,1,1,2,1,1,0,0
+    
+    # Sprite del enemigo tipo 2 (A2) 11x11 (0=transparente, 1=verde claro, 2=verde oscuro, 3=rojo)
+    .align 2
+    enemy2_sprite:
+    .byte 0,0,0,0,0,1,0,0,0,0,0
+    .byte 0,0,0,1,1,2,2,1,0,0,0
+    .byte 0,0,0,1,1,2,1,0,0,0,0
+    .byte 0,0,0,0,1,2,0,0,0,0,0
+    .byte 0,0,0,0,1,0,0,0,0,0,0
+    .byte 0,0,0,0,1,0,0,0,0,0,0
+    .byte 0,0,0,2,1,1,2,0,0,0,0
+    .byte 0,0,2,2,1,1,1,1,2,2,0
+    .byte 0,1,1,1,1,3,3,1,2,1,2
+    .byte 0,1,1,1,1,3,3,1,2,1,0
+    .byte 0,0,1,1,1,3,3,1,1,1,0
+    .byte 0,0,0,0,1,1,1,1,0,0,0
+    .byte 0,0,0,2,1,1,1,2,0,0,0
+    .byte 0,0,1,1,1,2,2,1,1,1,0
     
     # Sprite del cañón 3x3 (0=transparente, 1=amarillo, 2=rojo)
     .align 2
@@ -167,7 +196,7 @@
     msg_controls:    .asciiz "W/A/S/D - Esquiva las balas!\n"
     msg_lives:       .asciiz "Vidas: "
     msg_score:       .asciiz "Puntos: "
-    msg_kill:        .asciiz "+50 pts!\n"
+    msg_kill:        .asciiz "¡Enemigo Muerto!\n"
     msg_game_over:   .asciiz "\n*** GAME OVER ***\n"
     newline:         .asciiz "\n"
     
@@ -424,6 +453,22 @@ spawn_enemy:
     
     sw $zero, enemy_spawn_counter
     
+    # Incrementar contador de spawns
+    lw $t7, enemy_spawn_count
+    addi $t7, $t7, 1
+    sw $t7, enemy_spawn_count
+    
+    # Determinar tipo de enemigo
+    lw $t8, SPAWN_TYPE_2_EVERY
+    div $t7, $t8
+    mfhi $t9                    # t9 = resto (0 si es múltiplo de 5)
+    
+    # Si resto == 0, spawner tipo 2, sino tipo 1
+    li $s6, 0                   # s6 = tipo (0=normal, 1=tipo2)
+    bnez $t9, spawn_type_normal
+    li $s6, 1                   # Es tipo 2
+    
+spawn_type_normal:
     # Buscar slot libre
     la $t0, enemy_0
     lw $t1, 0($t0)
@@ -448,13 +493,28 @@ spawn_enemy_in_slot:
     li $v0, 30
     syscall
     move $t3, $a0
-    andi $t3, $t3, 0x3F     # Módulo 64
-    li $t4, 55              # 64 - 9 (tamaño enemigo)
+    andi $t3, $t3, 0x3F
+    
+    # Ajustar límites según tipo
+    beqz $s6, spawn_normal_limits
+    j spawn_type2_limits        # Saltar a los límites del tipo 2
+    j spawn_check_limits
+    
+spawn_normal_limits:
+    # Tipo 1: 9x9
+    li $t4, 55
+    j spawn_check_limits
+    
+spawn_type2_limits:
+    # Tipo 2: 11x11
+    li $t4, 53              # 64 - 11 = 53
+    
+spawn_check_limits:
     bgt $t3, $t4, spawn_enemy_adjust
     j spawn_enemy_set_pos
     
 spawn_enemy_adjust:
-    li $t3, 27              # Centro
+    li $t3, 27
     
 spawn_enemy_set_pos:
     sw $t3, 4($t0)      # x
@@ -465,6 +525,7 @@ spawn_enemy_set_pos:
     li $t5, 0
     sw $t5, 20($t0)     # shoot_counter = 0
     sw $t5, 24($t0)     # move_counter = 0
+    sw $s6, 28($t0)     # type (0 o 1)
 
 spawn_enemy_done:
     lw $ra, 0($sp)
@@ -549,6 +610,7 @@ deactivate_enemy:
     
     lw $a0, 12($t0)
     lw $a1, 16($t0)
+    lw $a2, 28($t0)     # ? AGREGAR ESTA LÍNEA (pasar tipo)
     jal erase_enemy
     
     lw $t0, 4($sp)
@@ -646,14 +708,19 @@ draw_single_enemy:
     lw $t1, 0($t0)
     beqz $t1, draw_enemy_end
     
+    # Verificar tipo de enemigo
+    lw $t2, 28($t0)         # Cargar tipo
+    
     # Borrar posición anterior
     lw $a0, 12($t0)
     lw $a1, 16($t0)
+    move $a2, $t2           # Pasar tipo como argumento
     jal erase_enemy
     
     # Dibujar en nueva posición
     lw $a0, 4($t0)
     lw $a1, 8($t0)
+    lw $a2, 28($t0)         # Pasar tipo
     jal draw_enemy_at
 
 draw_enemy_end:
@@ -672,8 +739,16 @@ erase_enemy:
     
     move $s0, $a0
     move $s1, $a1
-    lw $s2, ENEMY_SIZE
     
+    # Determinar tamaño según tipo
+    beqz $a2, erase_type_normal
+    lw $s2, ENEMY_TYPE_2_SIZE   # Tipo 2: 1x1
+    j erase_enemy_continue
+    
+erase_type_normal:
+    lw $s2, ENEMY_SIZE          # Tipo 1: 9x9
+    
+erase_enemy_continue:
     la $s3, wave_pattern
     la $t9, sea_colors
     
@@ -726,41 +801,111 @@ erase_enemy_done_loop:
     addi $sp, $sp, 20
     jr $ra
 
-# ===== DIBUJAR ENEMIGO =====
 draw_enemy_at:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     
+    # Verificar tipo (viene en $a2)
+    beqz $a2, draw_enemy_type_normal
+    
+    # ========== TIPO 2: Dibujar sprite verde ==========
     move $t0, $a0           # x position
     move $t1, $a1           # y position
-    lw $t2, ENEMY_SIZE      # 9x9
+    lw $t2, ENEMY_TYPE_2_SIZE    # 11
     
-    la $s0, enemy_sprite
-    lw $s1, enemy_gray_light  # Gris claro
-    lw $s2, enemy_gray_dark   # Gris oscuro
-    lw $s3, enemy_red         # Rojo
+    la $s0, enemy2_sprite
+    lw $s1, enemy2_green_light   # Verde claro
+    lw $s2, enemy2_green_dark    # Verde oscuro
+    lw $s3, enemy2_red           # Rojo
     
     li $t4, 0               # Y counter
     
-draw_enemy_y:
+draw_enemy2_y:
     bge $t4, $t2, draw_enemy_done_loop
     
     li $t5, 0               # X counter
     
-draw_enemy_x:
-    bge $t5, $t2, draw_enemy_next_y
+draw_enemy2_x:
+    bge $t5, $t2, draw_enemy2_next_y
     
-    # Obtener índice del sprite (Y * 9 + X)
+    # Obtener índice del sprite (Y * 11 + X)
+    # 11 = 8 + 2 + 1
     sll $t6, $t4, 3         # Y * 8
-    add $t6, $t6, $t4       # Y * 9
+    sll $t7, $t4, 1         # Y * 2
+    add $t6, $t6, $t7       # Y * 10
+    add $t6, $t6, $t4       # Y * 11
     add $t6, $t6, $t5       # + X
     add $t7, $s0, $t6
     lb $t7, 0($t7)          # Valor del pixel
     
-    # Si es 0, es transparente (no dibujar)
-    beqz $t7, skip_enemy_pixel
+    # Si es 0, es transparente
+    beqz $t7, skip_enemy2_pixel
     
     # Seleccionar color según valor
+    li $t8, 1
+    beq $t7, $t8, use_enemy2_light
+    li $t8, 2
+    beq $t7, $t8, use_enemy2_dark
+    li $t8, 3
+    beq $t7, $t8, use_enemy2_red
+    j skip_enemy2_pixel
+    
+use_enemy2_light:
+    move $t9, $s1
+    j draw_enemy2_pixel
+use_enemy2_dark:
+    move $t9, $s2
+    j draw_enemy2_pixel
+use_enemy2_red:
+    move $t9, $s3
+    
+draw_enemy2_pixel:
+    add $s4, $t1, $t4
+    sll $s4, $s4, 6
+    add $s4, $s4, $t0
+    add $s4, $s4, $t5
+    sll $s4, $s4, 2
+    add $s4, $gp, $s4
+    
+    sw $t9, 0($s4)
+    
+skip_enemy2_pixel:
+    addi $t5, $t5, 1
+    j draw_enemy2_x
+
+draw_enemy2_next_y:
+    addi $t4, $t4, 1
+    j draw_enemy2_y
+    
+    # ========== TIPO 1: Dibujar sprite original ==========
+draw_enemy_type_normal:
+    move $t0, $a0
+    move $t1, $a1
+    lw $t2, ENEMY_SIZE
+    
+    la $s0, enemy_sprite
+    lw $s1, enemy_gray_light
+    lw $s2, enemy_gray_dark
+    lw $s3, enemy_red
+    
+    li $t4, 0
+    
+draw_enemy_y:
+    bge $t4, $t2, draw_enemy_done_loop
+    
+    li $t5, 0
+    
+draw_enemy_x:
+    bge $t5, $t2, draw_enemy_next_y
+    
+    sll $t6, $t4, 3
+    add $t6, $t6, $t4
+    add $t6, $t6, $t5
+    add $t7, $s0, $t6
+    lb $t7, 0($t7)
+    
+    beqz $t7, skip_enemy_pixel
+    
     li $t8, 1
     beq $t7, $t8, use_enemy_light
     li $t8, 2
@@ -1435,7 +1580,16 @@ test_bullet_hit_enemy:
     lw $t4, PLAYER_BULLET_WIDTH
     add $t4, $t0, $t4       # bullet_right
     
+    # Obtener tamaño según tipo
+    lw $t7, 28($t9)         # Cargar tipo de enemigo
+    beqz $t7, collision_normal_size
+    lw $t5, ENEMY_TYPE_2_SIZE
+    j collision_calc_right
+
+collision_normal_size:
     lw $t5, ENEMY_SIZE
+
+collision_calc_right:
     add $t5, $t2, $t5       # enemy_right
     
     # Colisión en X?
@@ -1446,7 +1600,20 @@ test_bullet_hit_enemy:
     lw $t4, PLAYER_BULLET_HEIGHT
     add $t4, $t1, $t4       # bullet_bottom
     
+    # Calcular límites Y
+    lw $t4, PLAYER_BULLET_HEIGHT
+    add $t4, $t1, $t4       # bullet_bottom
+
+    # Obtener tamaño según tipo para Y
+    lw $t7, 28($t9)
+    beqz $t7, collision_normal_size_y
+    lw $t5, ENEMY_TYPE_2_SIZE
+    j collision_calc_bottom
+
+collision_normal_size_y:
     lw $t5, ENEMY_SIZE
+
+collision_calc_bottom:
     add $t5, $t3, $t5       # enemy_bottom
     
     # Colisión en Y?
@@ -1459,9 +1626,20 @@ test_bullet_hit_enemy:
     sw $t8, 0($sp)
     sw $t9, 4($sp)
     
-    # Sumar puntos
+    # Sumar puntos según tipo de enemigo
     lw $t6, player_score
+    lw $s5, 28($t9)          # Cargar tipo de enemigo
+    beqz $s5, points_type_normal
+
+    # Tipo 2: 100 puntos
+    li $t7, 100
+    j add_points
+
+points_type_normal:
+    # Tipo 1: 50 puntos
     lw $t7, POINTS_PER_KILL
+
+add_points:
     add $t6, $t6, $t7
     sw $t6, player_score
     
@@ -1484,6 +1662,7 @@ test_bullet_hit_enemy:
     # Borrar enemigo
     lw $a0, 12($t9)
     lw $a1, 16($t9)
+    lw $a2, 28($t9)     # ? AGREGAR ESTA LÍNEA
     jal erase_enemy
     
     # Restaurar punteros

@@ -17,6 +17,12 @@
     
     first_draw:      .word 1
     
+    # Sistema del portaaviones
+    carrier_visible:      .word 1
+    carrier_y_offset:     .word 16
+    CARRIER_HEIGHT:       .word 48
+    CARRIER_SCROLL_SPEED: .word 1
+    
     # Sistema de scroll del mar
     sea_scroll_offset: .word 0
     sea_scroll_speed:  .word 1
@@ -65,6 +71,10 @@
     .word 0x000066CC
     .word 0x004499DD
     
+    carrier_gray:       .word 0x00627070  # Gris (cuerpo)
+    carrier_light_gray: .word 0x009D9D9D  # Gris claro (líneas)
+    carrier_black:      .word 0x00000000  # Negro (detalles)
+    
     # Colores del avión del jugador
     plane_white:     .word 0x00FCFCFC    # Blanco (cuerpo)
     plane_gray:      .word 0x00BCBCBC    # Gris (sombras)
@@ -89,30 +99,45 @@
     enemy2_red:         .word 0x00D82800  # Rojo (cabina)
     
     # Array de balas enemigas (cada bala son 5 words: active, x, y, old_x, old_y)
-    .align 2
+    .align 4
     bullet_0: .word 0, 0, 0, 0, 0
+    .align 4
     bullet_1: .word 0, 0, 0, 0, 0
+    .align 4
     bullet_2: .word 0, 0, 0, 0, 0
+    .align 4
     bullet_3: .word 0, 0, 0, 0, 0
+    .align 4
     bullet_4: .word 0, 0, 0, 0, 0
     
     # Array de aviones enemigos (active, x, y, old_x, old_y, shoot_counter, move_counter)
     .align 2
     enemy_0: .word 0, 0, 0, 0, 0, 0, 0, 0
+    .align 2
     enemy_1: .word 0, 0, 0, 0, 0, 0, 0, 0
+    .align 2
     enemy_2: .word 0, 0, 0, 0, 0, 0, 0, 0
     
     # Array de balas del jugador
-    .align 2
+    .align 4
     player_bullet_0: .word 0, 0, 0, 0, 0
+    .align 4
     player_bullet_1: .word 0, 0, 0, 0, 0
+    .align 4
     player_bullet_2: .word 0, 0, 0, 0, 0
+    .align 4
     player_bullet_3: .word 0, 0, 0, 0, 0
+    .align 4
     player_bullet_4: .word 0, 0, 0, 0, 0
+    .align 4
     player_bullet_5: .word 0, 0, 0, 0, 0
+    .align 4
     player_bullet_6: .word 0, 0, 0, 0, 0
+    .align 4
     player_bullet_7: .word 0, 0, 0, 0, 0
+    .align 4
     player_bullet_8: .word 0, 0, 0, 0, 0
+    .align 4
     player_bullet_9: .word 0, 0, 0, 0, 0
     
     # Sprite de bala del jugador 1x3 (1=amarillo/punta, 2=rojo/cuerpo)
@@ -136,22 +161,83 @@
     .byte 0,0,1,1,2,1,1,0,0
     
     # Sprite del enemigo tipo 2 (A2) 11x11 (0=transparente, 1=verde claro, 2=verde oscuro, 3=rojo)
+    # Sprite del enemigo tipo 2 (A2) 11x11 (0=transparente, 1=verde claro, 2=verde oscuro, 3=rojo)
     .align 2
     enemy2_sprite:
     .byte 0,0,0,0,0,1,0,0,0,0,0
-    .byte 0,0,0,1,1,2,2,1,0,0,0
-    .byte 0,0,0,1,1,2,1,0,0,0,0
-    .byte 0,0,0,0,1,2,0,0,0,0,0
-    .byte 0,0,0,0,1,0,0,0,0,0,0
-    .byte 0,0,0,0,1,0,0,0,0,0,0
-    .byte 0,0,0,2,1,1,2,0,0,0,0
-    .byte 0,0,2,2,1,1,1,1,2,2,0
-    .byte 0,1,1,1,1,3,3,1,2,1,2
-    .byte 0,1,1,1,1,3,3,1,2,1,0
-    .byte 0,0,1,1,1,3,3,1,1,1,0
-    .byte 0,0,0,0,1,1,1,1,0,0,0
+    .byte 0,0,0,1,1,1,2,1,0,0,0
+    .byte 0,0,0,0,1,1,2,0,0,0,0
+    .byte 0,0,0,0,0,1,0,0,0,0,0
+    .byte 0,0,0,0,2,1,1,2,0,0,0
+    .byte 0,0,0,2,1,1,1,1,2,0,0
+    .byte 0,1,1,1,1,3,3,1,1,1,0
+    .byte 0,0,1,1,1,3,3,1,1,0,0
+    .byte 0,0,0,1,1,1,1,1,0,0,0
     .byte 0,0,0,2,1,1,1,2,0,0,0
-    .byte 0,0,1,1,1,2,2,1,1,1,0
+    .byte 0,0,1,1,1,2,2,1,1,0,0
+    
+    # Sprite del portaaviones 32x48 (0=mar, 1=gris, 2=gris claro, 3=negro)
+    .align 2
+    carrier_sprite:
+    # Fila 0-5: Torre de control (parte superior)
+    .byte 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    .byte 0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0
+    .byte 0,0,0,0,0,0,0,0,0,0,1,1,3,3,1,1,3,3,1,1,0,0,0,0,0,0,0,0,0,0,0,0
+    .byte 0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0
+    .byte 0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0
+    .byte 0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0
+
+     # Fila 6-11: Cubierta superior
+.byte 0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,0,0,0,0,0,0,0
+.byte 0,0,0,0,1,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0,0,0,0,0,0
+.byte 0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0
+.byte 0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0
+
+# Fila 12-23: Cubierta principal con líneas de aterrizaje
+.byte 0,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,0,0
+.byte 0,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,0,0
+.byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+.byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+.byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
+.byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
+.byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+.byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+.byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
+.byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
+.byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+.byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+
+# Fila 24-35: Cubierta media
+.byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
+.byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
+.byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+.byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+.byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
+.byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
+.byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+.byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+.byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
+.byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
+.byte 0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+.byte 0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+
+# Fila 36-47: Casco inferior
+.byte 0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0
+.byte 0,0,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,1,1,0,0,0
+.byte 0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0
+.byte 0,0,0,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,1,1,0,0,0,0
+.byte 0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0
+.byte 0,0,0,0,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,1,1,0,0,0,0,0
+.byte 0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0
+.byte 0,0,0,0,0,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,1,1,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,3,1,1,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0
+    .align 2
+    	
     
     # Sprite del cañón 3x3 (0=transparente, 1=amarillo, 2=rojo)
     .align 2
@@ -221,24 +307,11 @@ main:
     syscall
     
     jal draw_sea_full
+    jal draw_carrier
     sw $zero, first_draw
     
     # Dibujar jugador al inicio
     jal draw_player_new
-    
-    # Spawn inicial de un enemigo para prueba
-    la $t0, enemy_0
-    li $t1, 1
-    sw $t1, 0($t0)      # active
-    li $t1, 30
-    sw $t1, 4($t0)      # x = 30
-    li $t1, 5
-    sw $t1, 8($t0)      # y = 5
-    sw $t1, 12($t0)     # old_x
-    sw $t1, 16($t0)     # old_y
-    li $t1, 29
-    sw $t1, 20($t0)     # shoot_counter = 29 (disparará pronto)
-    sw $zero, 24($t0)   # move_counter = 0
     
 game_loop:
     lw $t0, game_over_flag
@@ -252,7 +325,6 @@ game_loop:
     jal update_player_bullets
     jal check_collisions
     jal check_bullet_enemy_collisions
-    jal draw_player_smart
     jal draw_enemies
     jal draw_bullets
     jal draw_player_bullets
@@ -309,10 +381,23 @@ scroll_sea:
 scroll_save:
     sw $t0, sea_scroll_offset
     
+    # Mover el portaaviones hacia abajo
+    lw $t0, carrier_visible
+    beqz $t0, scroll_redraw
+    
+    lw $t1, carrier_y_offset
+    lw $t2, CARRIER_SCROLL_SPEED
+    add $t1, $t1, $t2
+    sw $t1, carrier_y_offset
+    
+scroll_redraw:
     # Redibujar mar completo con nuevo offset
     jal draw_sea_scrolling
     
-    # Redibujar todos los elementos después del scroll
+    # Redibujar portaaviones si sigue visible
+    jal draw_carrier
+    
+    # Redibujar todos los elementos (AGREGAR ESTAS 4 LÍNEAS)
     jal draw_enemies
     jal draw_bullets
     jal draw_player_bullets
@@ -496,137 +581,149 @@ spawn_enemy_in_slot:
     andi $t3, $t3, 0x3F
     
     # Ajustar límites según tipo
-    beqz $s6, spawn_normal_limits
-    j spawn_type2_limits        # Saltar a los límites del tipo 2
-    j spawn_check_limits
-    
-spawn_normal_limits:
-    # Tipo 1: 9x9
-    li $t4, 55
-    j spawn_check_limits
-    
-spawn_type2_limits:
+    beqz $s6, spawn_use_normal_limits
     # Tipo 2: 11x11
     li $t4, 53              # 64 - 11 = 53
+    j spawn_check_x_limit
     
-spawn_check_limits:
-    bgt $t3, $t4, spawn_enemy_adjust
-    j spawn_enemy_set_pos
+spawn_use_normal_limits:
+    # Tipo 1: 9x9
+    li $t4, 55              # 64 - 9 = 55
     
-spawn_enemy_adjust:
-    li $t3, 27
+spawn_check_x_limit:
+    bgt $t3, $t4, spawn_center_enemy
+    j spawn_set_enemy_pos
     
-spawn_enemy_set_pos:
+spawn_center_enemy:
+    li $t3, 27              # Centrar
+    
+spawn_set_enemy_pos:
     sw $t3, 4($t0)      # x
     li $t4, 0
     sw $t4, 8($t0)      # y = 0
-    sw $t3, 12($t0)     # old_x
-    sw $t4, 16($t0)     # old_y
-    li $t5, 0
-    sw $t5, 20($t0)     # shoot_counter = 0
-    sw $t5, 24($t0)     # move_counter = 0
+    sw $t3, 12($t0)     # old_x = x
+    sw $t4, 16($t0)     # old_y = 0
+    sw $zero, 20($t0)   # shoot_counter = 0
+    sw $zero, 24($t0)   # move_counter = 0
     sw $s6, 28($t0)     # type (0 o 1)
 
 spawn_enemy_done:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
-
+    
 # ===== ACTUALIZAR ENEMIGOS =====
 update_enemies:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     
     la $t0, enemy_0
+    # VERIFICAR que sea una dirección válida
+    beqz $t0, skip_enemy_0
     jal update_single_enemy
     
+skip_enemy_0:  
     la $t0, enemy_1
+    beqz $t0, skip_enemy_1
     jal update_single_enemy
     
+skip_enemy_1:
     la $t0, enemy_2
+    beqz $t0, skip_enemy_2
     jal update_single_enemy
     
+skip_enemy_2:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
 
 update_single_enemy:
-    lw $t1, 0($t0)
-    beqz $t1, update_enemy_end
+    # Guardar el puntero del enemigo
+    addi $sp, $sp, -4
+    sw $s0, 0($sp)
+    move $s0, $t0
+    
+    lw $t1, 0($s0)
+    beqz $t1, update_enemy_end_safe
     
     # Actualizar contador de movimiento
-    lw $t7, 24($t0)
+    lw $t7, 24($s0)
     addi $t7, $t7, 1
-    sw $t7, 24($t0)
+    sw $t7, 24($s0)
     
     # Verificar si debe moverse
     lw $t8, ENEMY_MOVE_RATE
-    blt $t7, $t8, skip_enemy_move
+    blt $t7, $t8, skip_enemy_move_safe
     
     # Resetear contador de movimiento
-    sw $zero, 24($t0)
+    sw $zero, 24($s0)
     
     # Guardar posición anterior
-    lw $t2, 4($t0)
-    lw $t3, 8($t0)
-    sw $t2, 12($t0)
-    sw $t3, 16($t0)
+    lw $t2, 4($s0)
+    lw $t3, 8($s0)
+    sw $t2, 12($s0)
+    sw $t3, 16($s0)
     
     # Mover hacia abajo
     lw $t4, ENEMY_SPEED
     add $t3, $t3, $t4
-    sw $t3, 8($t0)
+    sw $t3, 8($s0)
     
-skip_enemy_move:
+skip_enemy_move_safe:
     # Actualizar contador de disparo
-    lw $t5, 20($t0)
+    lw $t5, 20($s0)
     addi $t5, $t5, 1
-    sw $t5, 20($t0)
+    sw $t5, 20($s0)
     
     # Verificar si debe disparar
     lw $t6, ENEMY_SHOOT_RATE
-    blt $t5, $t6, check_enemy_bounds
+    blt $t5, $t6, check_enemy_bounds_safe
     
     # Resetear contador y disparar
-    sw $zero, 20($t0)
+    sw $zero, 20($s0)
     
+    move $t0, $s0
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     jal enemy_shoot
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     
-check_enemy_bounds:
+check_enemy_bounds_safe:
     # Desactivar si sale de pantalla
-    lw $t3, 8($t0)
+    lw $t3, 8($s0)
     lw $t7, SCREEN_HEIGHT
-    bge $t3, $t7, deactivate_enemy
-    jr $ra
+    bge $t3, $t7, deactivate_enemy_safe
+    j update_enemy_end_safe
 
-deactivate_enemy:
+deactivate_enemy_safe:
     addi $sp, $sp, -8
     sw $ra, 0($sp)
-    sw $t0, 4($sp)
+    sw $s0, 4($sp)
     
-    lw $a0, 12($t0)
-    lw $a1, 16($t0)
-    lw $a2, 28($t0)     # ? AGREGAR ESTA LÍNEA (pasar tipo)
+    lw $a0, 12($s0)
+    lw $a1, 16($s0)
+    lw $a2, 28($s0)
     jal erase_enemy
     
-    lw $t0, 4($sp)
+    lw $s0, 4($sp)
     lw $ra, 0($sp)
     addi $sp, $sp, 8
     
-    sw $zero, 0($t0)
+    sw $zero, 0($s0)
+
+update_enemy_end_safe:
+    lw $s0, 0($sp)
+    addi $sp, $sp, 4
     jr $ra
 
-update_enemy_end:
-    jr $ra
-
-# ===== ENEMIGO DISPARA =====
 enemy_shoot:
-    addi $sp, $sp, -4
+    addi $sp, $sp, -8
     sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    
+    # Guardar puntero del enemigo
+    move $s0, $t0
     
     # Buscar slot libre para bala
     la $t1, bullet_0
@@ -656,9 +753,9 @@ enemy_shoot_in_slot:
     li $t3, 1
     sw $t3, 0($t1)
     
-    # Posición desde el enemigo
-    lw $t4, 4($t0)      # enemy x
-    lw $t5, 8($t0)      # enemy y
+    # Posición desde el enemigo (usar $s0)
+    lw $t4, 4($s0)      # enemy x
+    lw $t5, 8($s0)      # enemy y
     
     # Centrar bala bajo el enemigo y dar espacio
     lw $t6, ENEMY_SIZE
@@ -679,53 +776,72 @@ enemy_shoot_in_slot:
     sw $t5, 16($t1)     # bullet old_y
 
 enemy_shoot_done:
+    lw $s0, 4($sp)
     lw $ra, 0($sp)
-    addi $sp, $sp, 4
+    addi $sp, $sp, 8
     jr $ra
 
 # ===== DIBUJAR ENEMIGOS =====
 draw_enemies:
-    addi $sp, $sp, -4
+    addi $sp, $sp, -8
     sw $ra, 0($sp)
+    sw $s0, 4($sp)
     
-    la $t0, enemy_0
+    la $s0, enemy_0
+    move $t0, $s0
     jal draw_single_enemy
     
-    la $t0, enemy_1
+    la $s0, enemy_1
+    move $t0, $s0
     jal draw_single_enemy
     
-    la $t0, enemy_2
+    la $s0, enemy_2
+    move $t0, $s0
     jal draw_single_enemy
     
+    lw $s0, 4($sp)
     lw $ra, 0($sp)
-    addi $sp, $sp, 4
+    addi $sp, $sp, 8
     jr $ra
 
 draw_single_enemy:
-    addi $sp, $sp, -4
+    addi $sp, $sp, -8
     sw $ra, 0($sp)
+    sw $s0, 4($sp)
     
-    lw $t1, 0($t0)
-    beqz $t1, draw_enemy_end
+    # Guardar puntero del enemigo en $s0
+    move $s0, $t0
+    
+    # VERIFICAR ALINEACIÓN
+    andi $t9, $s0, 0x3
+    bnez $t9, draw_enemy_end_safe
+    
+    # VERIFICAR QUE NO SEA NULL
+    beqz $s0, draw_enemy_end_safe
+    
+    # Cargar active
+    lw $t1, 0($s0)
+    beqz $t1, draw_enemy_end_safe
     
     # Verificar tipo de enemigo
-    lw $t2, 28($t0)         # Cargar tipo
+    lw $t2, 28($s0)
     
     # Borrar posición anterior
-    lw $a0, 12($t0)
-    lw $a1, 16($t0)
-    move $a2, $t2           # Pasar tipo como argumento
+    lw $a0, 12($s0)
+    lw $a1, 16($s0)
+    move $a2, $t2
     jal erase_enemy
     
     # Dibujar en nueva posición
-    lw $a0, 4($t0)
-    lw $a1, 8($t0)
-    lw $a2, 28($t0)         # Pasar tipo
+    lw $a0, 4($s0)
+    lw $a1, 8($s0)
+    lw $a2, 28($s0)
     jal draw_enemy_at
 
-draw_enemy_end:
+draw_enemy_end_safe:
+    lw $s0, 4($sp)
     lw $ra, 0($sp)
-    addi $sp, $sp, 4
+    addi $sp, $sp, 8
     jr $ra
 
 # ===== BORRAR ENEMIGO =====
@@ -767,15 +883,27 @@ erase_enemy_y:
 erase_enemy_x:
     bge $t6, $s2, erase_enemy_next_y
     
-    add $t7, $s0, $t6
-    andi $s4, $t7, 0x1F
-    add $s5, $t3, $s4
-    lb $s5, 0($s5)
+    # Calcular posición absoluta
+    add $a0, $s0, $t6       # x absoluto
+    add $a1, $s1, $t5       # y absoluto
     
-    sll $s6, $s5, 2
-    add $s6, $t9, $s6
-    lw $s6, 0($s6)
+    # Guardar registros temporales
+    addi $sp, $sp, -12
+    sw $t5, 0($sp)
+    sw $t6, 4($sp)
+    sw $ra, 8($sp)
     
+    # Obtener color de fondo correcto
+    jal get_background_color
+    move $s6, $v0           # Guardar color
+    
+    # Restaurar registros
+    lw $ra, 8($sp)
+    lw $t6, 4($sp)
+    lw $t5, 0($sp)
+    addi $sp, $sp, 12
+    
+    # Dibujar el color
     add $s7, $s1, $t5
     sll $s7, $s7, 6
     add $s7, $s7, $s0
@@ -948,74 +1076,87 @@ draw_enemy_done_loop:
 
 # ===== ACTUALIZAR BALAS =====
 update_bullets:
-    addi $sp, $sp, -4
+    addi $sp, $sp, -8
     sw $ra, 0($sp)
+    sw $s0, 4($sp)
     
     # Actualizar bullet_0
-    la $t0, bullet_0
+    la $s0, bullet_0
+    move $t0, $s0
     jal update_single_bullet
     
     # Actualizar bullet_1
-    la $t0, bullet_1
+    la $s0, bullet_1
+    move $t0, $s0
     jal update_single_bullet
     
     # Actualizar bullet_2
-    la $t0, bullet_2
+    la $s0, bullet_2
+    move $t0, $s0
     jal update_single_bullet
     
     # Actualizar bullet_3
-    la $t0, bullet_3
+    la $s0, bullet_3
+    move $t0, $s0
     jal update_single_bullet
     
     # Actualizar bullet_4
-    la $t0, bullet_4
+    la $s0, bullet_4
+    move $t0, $s0
     jal update_single_bullet
     
+    lw $s0, 4($sp)
     lw $ra, 0($sp)
-    addi $sp, $sp, 4
+    addi $sp, $sp, 8
     jr $ra
 
 update_single_bullet:
-    lw $t1, 0($t0)
-    beqz $t1, update_bullet_end
+    addi $sp, $sp, -4
+    sw $s0, 0($sp)
+    
+    # Guardar puntero
+    move $s0, $t0
+    
+    lw $t1, 0($s0)
+    beqz $t1, update_bullet_end_safe
     
     # Guardar posición anterior
-    lw $t2, 4($t0)
-    lw $t3, 8($t0)
-    sw $t2, 12($t0)
-    sw $t3, 16($t0)
+    lw $t2, 4($s0)
+    lw $t3, 8($s0)
+    sw $t2, 12($s0)
+    sw $t3, 16($s0)
     
     # Mover hacia abajo
     lw $t4, BULLET_SPEED
     add $t3, $t3, $t4
-    sw $t3, 8($t0)
+    sw $t3, 8($s0)
     
     # Desactivar si sale de pantalla
     lw $t5, SCREEN_HEIGHT
-    bge $t3, $t5, deactivate_bullet
-    jr $ra
+    bge $t3, $t5, deactivate_bullet_safe
+    j update_bullet_end_safe
 
-deactivate_bullet:
+deactivate_bullet_safe:
     # Borrar bala antes de desactivar
     addi $sp, $sp, -8
     sw $ra, 0($sp)
-    sw $t0, 4($sp)
+    sw $s0, 4($sp)
     
-    lw $a0, 12($t0)
-    lw $a1, 16($t0)
+    lw $a0, 12($s0)
+    lw $a1, 16($s0)
     jal erase_bullet
     
-    lw $t0, 4($sp)
+    lw $s0, 4($sp)
     lw $ra, 0($sp)
     addi $sp, $sp, 8
     
-    sw $zero, 0($t0)
+    sw $zero, 0($s0)
+
+update_bullet_end_safe:
+    lw $s0, 0($sp)
+    addi $sp, $sp, 4
     jr $ra
 
-update_bullet_end:
-    jr $ra
-
-# ===== DISPARAR BALA DEL JUGADOR =====
 spawn_player_bullet:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
@@ -1095,141 +1236,184 @@ spawn_player_done:
 
 # ===== ACTUALIZAR BALAS DEL JUGADOR =====
 update_player_bullets:
-    addi $sp, $sp, -4
+    addi $sp, $sp, -8
     sw $ra, 0($sp)
+    sw $s0, 4($sp)
     
-    la $t0, player_bullet_0
+    la $s0, player_bullet_0
+    move $t0, $s0
     jal update_single_player_bullet
     
-    la $t0, player_bullet_1
+    la $s0, player_bullet_1
+    move $t0, $s0
     jal update_single_player_bullet
     
-    la $t0, player_bullet_2
+    la $s0, player_bullet_2
+    move $t0, $s0
     jal update_single_player_bullet
     
-    la $t0, player_bullet_3
+    la $s0, player_bullet_3
+    move $t0, $s0
     jal update_single_player_bullet
     
-    la $t0, player_bullet_4
+    la $s0, player_bullet_4
+    move $t0, $s0
     jal update_single_player_bullet
     
-    la $t0, player_bullet_5
+    la $s0, player_bullet_5
+    move $t0, $s0
     jal update_single_player_bullet
     
-    la $t0, player_bullet_6
+    la $s0, player_bullet_6
+    move $t0, $s0
     jal update_single_player_bullet
     
-    la $t0, player_bullet_7
+    la $s0, player_bullet_7
+    move $t0, $s0
     jal update_single_player_bullet
     
-    la $t0, player_bullet_8
+    la $s0, player_bullet_8
+    move $t0, $s0
     jal update_single_player_bullet
     
-    la $t0, player_bullet_9
+    la $s0, player_bullet_9
+    move $t0, $s0
     jal update_single_player_bullet
     
+    lw $s0, 4($sp)
     lw $ra, 0($sp)
-    addi $sp, $sp, 4
+    addi $sp, $sp, 8
     jr $ra
 
 update_single_player_bullet:
-    lw $t1, 0($t0)
-    beqz $t1, update_player_bullet_end
+    addi $sp, $sp, -4
+    sw $s0, 0($sp)
+    
+    # Guardar puntero
+    move $s0, $t0
+    
+    lw $t1, 0($s0)
+    beqz $t1, update_player_bullet_end_safe
     
     # Guardar posición anterior
-    lw $t2, 4($t0)
-    lw $t3, 8($t0)
-    sw $t2, 12($t0)
-    sw $t3, 16($t0)
+    lw $t2, 4($s0)
+    lw $t3, 8($s0)
+    sw $t2, 12($s0)
+    sw $t3, 16($s0)
     
     # Mover hacia arriba
     lw $t4, PLAYER_BULLET_SPEED
     sub $t3, $t3, $t4
-    sw $t3, 8($t0)
+    sw $t3, 8($s0)
     
     # Desactivar si sale de pantalla
-    bltz $t3, deactivate_player_bullet
-    jr $ra
+    bltz $t3, deactivate_player_bullet_safe
+    j update_player_bullet_end_safe
 
-deactivate_player_bullet:
+deactivate_player_bullet_safe:
     # Borrar bala antes de desactivar
     addi $sp, $sp, -8
     sw $ra, 0($sp)
-    sw $t0, 4($sp)
+    sw $s0, 4($sp)
     
-    lw $a0, 12($t0)
-    lw $a1, 16($t0)
+    lw $a0, 12($s0)
+    lw $a1, 16($s0)
     jal erase_player_bullet
     
-    lw $t0, 4($sp)
+    lw $s0, 4($sp)
     lw $ra, 0($sp)
     addi $sp, $sp, 8
     
-    sw $zero, 0($t0)
-    jr $ra
+    sw $zero, 0($s0)
 
-update_player_bullet_end:
+update_player_bullet_end_safe:
+    lw $s0, 0($sp)
+    addi $sp, $sp, 4
     jr $ra
 
 # ===== DIBUJAR BALAS DEL JUGADOR =====
 draw_player_bullets:
-    addi $sp, $sp, -4
+    addi $sp, $sp, -8
     sw $ra, 0($sp)
+    sw $s0, 4($sp)
     
-    la $t0, player_bullet_0
+    la $s0, player_bullet_0
+    move $t0, $s0
     jal draw_single_player_bullet
     
-    la $t0, player_bullet_1
+    la $s0, player_bullet_1
+    move $t0, $s0
     jal draw_single_player_bullet
     
-    la $t0, player_bullet_2
+    la $s0, player_bullet_2
+    move $t0, $s0
     jal draw_single_player_bullet
     
-    la $t0, player_bullet_3
+    la $s0, player_bullet_3
+    move $t0, $s0
     jal draw_single_player_bullet
     
-    la $t0, player_bullet_4
+    la $s0, player_bullet_4
+    move $t0, $s0
     jal draw_single_player_bullet
     
-    la $t0, player_bullet_5
+    la $s0, player_bullet_5
+    move $t0, $s0
     jal draw_single_player_bullet
     
-    la $t0, player_bullet_6
+    la $s0, player_bullet_6
+    move $t0, $s0
     jal draw_single_player_bullet
     
-    la $t0, player_bullet_7
+    la $s0, player_bullet_7
+    move $t0, $s0
     jal draw_single_player_bullet
     
-    la $t0, player_bullet_8
+    la $s0, player_bullet_8
+    move $t0, $s0
     jal draw_single_player_bullet
     
-    la $t0, player_bullet_9
+    la $s0, player_bullet_9
+    move $t0, $s0
     jal draw_single_player_bullet
     
+    lw $s0, 4($sp)
     lw $ra, 0($sp)
-    addi $sp, $sp, 4
+    addi $sp, $sp, 8
     jr $ra
 
 draw_single_player_bullet:
-    addi $sp, $sp, -4
+    addi $sp, $sp, -8
     sw $ra, 0($sp)
+    sw $s0, 4($sp)
     
-    lw $t1, 0($t0)
-    beqz $t1, draw_single_player_end
+    # Guardar puntero de la bala en $s0
+    move $s0, $t0
+    
+    # VERIFICAR ALINEACIÓN
+    andi $t9, $s0, 0x3
+    bnez $t9, draw_single_player_bullet_end
+    
+    # VERIFICAR QUE NO SEA NULL
+    beqz $s0, draw_single_player_bullet_end
+    
+    lw $t1, 0($s0)
+    beqz $t1, draw_single_player_bullet_end
     
     # Borrar posición anterior
-    lw $a0, 12($t0)
-    lw $a1, 16($t0)
+    lw $a0, 12($s0)
+    lw $a1, 16($s0)
     jal erase_player_bullet
     
     # Dibujar en nueva posición
-    lw $a0, 4($t0)
-    lw $a1, 8($t0)
+    lw $a0, 4($s0)
+    lw $a1, 8($s0)
     jal draw_player_bullet_at
 
-draw_single_player_end:
+draw_single_player_bullet_end:
+    lw $s0, 4($sp)
     lw $ra, 0($sp)
-    addi $sp, $sp, 4
+    addi $sp, $sp, 8
     jr $ra
 
 # ===== BORRAR BALA DEL JUGADOR =====
@@ -1264,15 +1448,27 @@ erase_player_bullet_y:
 erase_player_bullet_x:
     bge $t6, $s2, erase_player_bullet_next_y
     
-    add $t7, $s0, $t6
-    andi $s4, $t7, 0x1F
-    add $s5, $t3, $s4
-    lb $s5, 0($s5)
+    # Calcular posición absoluta
+    add $a0, $s0, $t6       # x absoluto
+    add $a1, $s1, $t5       # y absoluto
     
-    sll $s6, $s5, 2
-    add $s6, $t9, $s6
-    lw $s6, 0($s6)
+    # Guardar registros temporales
+    addi $sp, $sp, -12
+    sw $t5, 0($sp)
+    sw $t6, 4($sp)
+    sw $ra, 8($sp)
     
+    # Obtener color de fondo correcto
+    jal get_background_color
+    move $s6, $v0           # Guardar color
+    
+    # Restaurar registros
+    lw $ra, 8($sp)
+    lw $t6, 4($sp)
+    lw $t5, 0($sp)
+    addi $sp, $sp, 12
+    
+    # Dibujar el color
     add $s7, $s1, $t5
     sll $s7, $s7, 6
     add $s7, $s7, $s0
@@ -1735,48 +1931,67 @@ invuln_done:
 
 # ===== DIBUJAR BALAS =====
 draw_bullets:
-    addi $sp, $sp, -4
+    addi $sp, $sp, -8
     sw $ra, 0($sp)
+    sw $s0, 4($sp)
     
-    la $t0, bullet_0
+    la $s0, bullet_0
+    move $t0, $s0
     jal draw_single_bullet
     
-    la $t0, bullet_1
+    la $s0, bullet_1
+    move $t0, $s0
     jal draw_single_bullet
     
-    la $t0, bullet_2
+    la $s0, bullet_2
+    move $t0, $s0
     jal draw_single_bullet
     
-    la $t0, bullet_3
+    la $s0, bullet_3
+    move $t0, $s0
     jal draw_single_bullet
     
-    la $t0, bullet_4
+    la $s0, bullet_4
+    move $t0, $s0
     jal draw_single_bullet
     
+    lw $s0, 4($sp)
     lw $ra, 0($sp)
-    addi $sp, $sp, 4
+    addi $sp, $sp, 8
     jr $ra
 
 draw_single_bullet:
-    addi $sp, $sp, -4
+    addi $sp, $sp, -8
     sw $ra, 0($sp)
+    sw $s0, 4($sp)
     
-    lw $t1, 0($t0)
-    beqz $t1, draw_single_end
+    # Guardar puntero de la bala en $s0
+    move $s0, $t0
+    
+    # VERIFICAR ALINEACIÓN
+    andi $t9, $s0, 0x3
+    bnez $t9, draw_single_bullet_end
+    
+    # VERIFICAR QUE NO SEA NULL
+    beqz $s0, draw_single_bullet_end
+    
+    lw $t1, 0($s0)
+    beqz $t1, draw_single_bullet_end
     
     # Borrar posición anterior
-    lw $a0, 12($t0)
-    lw $a1, 16($t0)
+    lw $a0, 12($s0)
+    lw $a1, 16($s0)
     jal erase_bullet
     
     # Dibujar en nueva posición
-    lw $a0, 4($t0)
-    lw $a1, 8($t0)
+    lw $a0, 4($s0)
+    lw $a1, 8($s0)
     jal draw_bullet_at
 
-draw_single_end:
+draw_single_bullet_end:
+    lw $s0, 4($sp)
     lw $ra, 0($sp)
-    addi $sp, $sp, 4
+    addi $sp, $sp, 8
     jr $ra
 
 # ===== BORRAR BALA =====
@@ -1810,15 +2025,27 @@ erase_bullet_y:
 erase_bullet_x:
     bge $t6, $s2, erase_bullet_next_y
     
-    add $t7, $s0, $t6
-    andi $s4, $t7, 0x1F
-    add $s5, $t3, $s4
-    lb $s5, 0($s5)
+    # Calcular posición absoluta
+    add $a0, $s0, $t6       # x absoluto
+    add $a1, $s1, $t5       # y absoluto
     
-    sll $s6, $s5, 2
-    add $s6, $t9, $s6
-    lw $s6, 0($s6)
+    # Guardar registros temporales
+    addi $sp, $sp, -12
+    sw $t5, 0($sp)
+    sw $t6, 4($sp)
+    sw $ra, 8($sp)
     
+    # Obtener color de fondo correcto
+    jal get_background_color
+    move $s6, $v0           # Guardar color
+    
+    # Restaurar registros
+    lw $ra, 8($sp)
+    lw $t6, 4($sp)
+    lw $t5, 0($sp)
+    addi $sp, $sp, 12
+    
+    # Dibujar el color
     add $s7, $s1, $t5
     sll $s7, $s7, 6
     add $s7, $s7, $s0
@@ -1914,6 +2141,222 @@ draw_bullet_done_loop:
     addi $sp, $sp, 4
     jr $ra
 
+# ===== DIBUJAR PORTAAVIONES =====
+draw_carrier:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    lw $t0, carrier_visible
+    beqz $t0, draw_carrier_done
+    
+    # Posición: centrado horizontalmente, Y dinámico
+    li $t0, 16              # x = 16 (centrado en 64)
+    lw $t1, carrier_y_offset  # y = offset dinámico
+    lw $t2, CARRIER_HEIGHT  # 48
+    li $t3, 32              # ancho
+    
+    # Si el barco ya salió completamente de la pantalla, ocultarlo
+    li $t4, 64
+    bge $t1, $t4, hide_carrier_complete
+    
+    la $s0, carrier_sprite
+    lw $s1, carrier_gray
+    lw $s2, carrier_light_gray
+    lw $s3, carrier_black
+    la $s4, sea_colors
+    
+    li $t4, 0               # Y counter
+    
+draw_carrier_y:
+    bge $t4, $t2, draw_carrier_done
+    
+    # Calcular Y en pantalla
+    add $t5, $t1, $t4
+    # Si Y >= 64, no dibujar esta fila
+    li $t6, 64
+    bge $t5, $t6, draw_carrier_next_y
+    # Si Y < 0, no dibujar esta fila
+    bltz $t5, draw_carrier_next_y
+    
+    li $t6, 0               # X counter
+    
+draw_carrier_x:
+    bge $t6, $t3, draw_carrier_next_y
+    
+    # Calcular X en pantalla
+    add $t7, $t0, $t6
+    # Si X >= 64, no dibujar este pixel
+    li $t8, 64
+    bge $t7, $t8, skip_carrier_pixel
+    # Si X < 0, no dibujar este pixel
+    bltz $t7, skip_carrier_pixel
+    
+    # Obtener índice del sprite (Y * 32 + X)
+    sll $t7, $t4, 5         # Y * 32
+    add $t7, $t7, $t6       # + X
+    add $t8, $s0, $t7
+    lb $t8, 0($t8)          # Valor del pixel
+    
+    # Si es 0, dibujar mar
+    beqz $t8, draw_carrier_sea
+    
+    # Seleccionar color según valor
+    li $t9, 1
+    beq $t8, $t9, use_carrier_gray
+    li $t9, 2
+    beq $t8, $t9, use_carrier_light
+    li $t9, 3
+    beq $t8, $t9, use_carrier_black
+    j skip_carrier_pixel
+    
+use_carrier_gray:
+    move $s5, $s1
+    j draw_carrier_pixel
+use_carrier_light:
+    move $s5, $s2
+    j draw_carrier_pixel
+use_carrier_black:
+    move $s5, $s3
+    j draw_carrier_pixel
+
+draw_carrier_sea:
+    # Dibujar patrón de mar
+    add $s6, $t1, $t4       # Y absoluto
+    andi $s6, $s6, 0xF
+    sll $s6, $s6, 5
+    la $s7, wave_pattern
+    add $s6, $s7, $s6
+    
+    add $s7, $t0, $t6       # X absoluto
+    andi $s7, $s7, 0x1F
+    add $s6, $s6, $s7
+    lb $s6, 0($s6)
+    
+    sll $s6, $s6, 2
+    add $s6, $s4, $s6
+    lw $s5, 0($s6)
+    
+draw_carrier_pixel:
+    # Calcular offset en display
+    add $s6, $t1, $t4       # Y total
+    sll $s6, $s6, 6         # * 64
+    add $s6, $s6, $t0       # + X base
+    add $s6, $s6, $t6       # + X offset
+    sll $s6, $s6, 2         # * 4
+    add $s6, $gp, $s6
+    
+    sw $s5, 0($s6)
+    
+skip_carrier_pixel:
+    addi $t6, $t6, 1
+    j draw_carrier_x
+
+draw_carrier_next_y:
+    addi $t4, $t4, 1
+    j draw_carrier_y
+
+hide_carrier_complete:
+    sw $zero, carrier_visible
+
+draw_carrier_done:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== OBTENER COLOR DE FONDO (MAR O PORTAAVIONES) =====
+# Parámetros: $a0 = x, $a1 = y
+# Retorna: $v0 = color
+get_background_color:
+    addi $sp, $sp, -24
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    sw $s4, 20($sp)
+    
+    move $s0, $a0           # x
+    move $s1, $a1           # y
+    
+    # Verificar si portaaviones está visible
+    lw $t0, carrier_visible
+    beqz $t0, get_bg_sea
+    
+    # Verificar si el punto está dentro del área del portaaviones
+    li $t1, 16              # carrier_x
+    lw $t2, carrier_y_offset  # carrier_y DINÁMICO
+    li $t3, 32              # carrier_width
+    lw $t4, CARRIER_HEIGHT  # carrier_height
+    
+    # Verificar X: x >= carrier_x && x < carrier_x + width
+    blt $s0, $t1, get_bg_sea
+    add $t5, $t1, $t3
+    bge $s0, $t5, get_bg_sea
+    
+    # Verificar Y: y >= carrier_y && y < carrier_y + height
+    blt $s1, $t2, get_bg_sea
+    add $t5, $t2, $t4
+    bge $s1, $t5, get_bg_sea
+    
+    # Está sobre el portaaviones - obtener color del sprite
+    sub $t5, $s0, $t1       # offset_x
+    sub $t6, $s1, $t2       # offset_y
+    
+    # Calcular índice en sprite (offset_y * 32 + offset_x)
+    sll $t7, $t6, 5         # offset_y * 32
+    add $t7, $t7, $t5       # + offset_x
+    la $t8, carrier_sprite
+    add $t8, $t8, $t7
+    lb $t8, 0($t8)          # Valor del pixel
+    
+    # Si es 0, es mar
+    beqz $t8, get_bg_sea
+    
+    # Seleccionar color según valor
+    li $t9, 1
+    beq $t8, $t9, get_bg_carrier_gray
+    li $t9, 2
+    beq $t8, $t9, get_bg_carrier_light
+    li $t9, 3
+    beq $t8, $t9, get_bg_carrier_black
+    j get_bg_sea
+    
+get_bg_carrier_gray:
+    lw $v0, carrier_gray
+    j get_bg_done
+get_bg_carrier_light:
+    lw $v0, carrier_light_gray
+    j get_bg_done
+get_bg_carrier_black:
+    lw $v0, carrier_black
+    j get_bg_done
+    
+get_bg_sea:
+    # Obtener color del mar usando el patrón de olas
+    andi $t2, $s1, 0xF
+    sll $t2, $t2, 5
+    la $t3, wave_pattern
+    add $t3, $t3, $t2
+    
+    andi $t5, $s0, 0x1F
+    add $t6, $t3, $t5
+    lb $t6, 0($t6)
+    
+    sll $t7, $t6, 2
+    la $t9, sea_colors
+    add $t7, $t9, $t7
+    lw $v0, 0($t7)
+    
+get_bg_done:
+    lw $s4, 20($sp)
+    lw $s3, 16($sp)
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 24
+    jr $ra
+    
 # ===== DIBUJAR MAR COMPLETO =====
 draw_sea_full:
     addi $sp, $sp, -4

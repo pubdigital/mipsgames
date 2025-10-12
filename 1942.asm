@@ -45,6 +45,9 @@
     ENEMY_SPAWN_RATE:    .word 50
     ENEMY_SHOOT_RATE:    .word 30
     
+    ENEMY_HORIZONTAL_SPEED: .word 1
+    ENEMY_DIRECTION_CHANGE_RATE: .word 10   # Cada 60 frames cambia dirección
+    
     # Después de ENEMY_SHOOT_RATE
     ENEMY_TYPE_2_SIZE:   .word 11        # 11x11 (tamaño real del sprite)
     enemy_type_2_speed:  .word 1        # Misma velocidad
@@ -63,8 +66,6 @@
     player_score:    .word 0
     POINTS_PER_KILL: .word 50
     game_over_flag:  .word 0
-    invulnerable_counter: .word 0
-    INVULNERABLE_TIME:    .word 60
     
     # Paleta de colores
     sea_colors:
@@ -112,11 +113,11 @@
     
     # Array de aviones enemigos (active, x, y, old_x, old_y, shoot_counter, move_counter)
     .align 2
-    enemy_0: .word 0, 0, 0, 0, 0, 0, 0, 0
+    enemy_0: .word 0, 0, 0, 0, 0, 0, 0, 0, 0
     .align 2
-    enemy_1: .word 0, 0, 0, 0, 0, 0, 0, 0
+    enemy_1: .word 0, 0, 0, 0, 0, 0, 0, 0, 0
     .align 2
-    enemy_2: .word 0, 0, 0, 0, 0, 0, 0, 0
+    enemy_2: .word 0, 0, 0, 0, 0, 0, 0, 0, 0
     
     # Array de balas del jugador
     .align 4
@@ -328,7 +329,6 @@ game_loop:
     jal draw_enemies
     jal draw_bullets
     jal draw_player_bullets
-    jal update_invulnerability
     jal delay
     j game_loop
 
@@ -585,7 +585,41 @@ spawn_enemy_in_slot:
     # Tipo 2: 11x11
     li $t4, 53              # 64 - 11 = 53
     j spawn_check_x_limit
+
+spawn_set_enemy_pos:
+    sw $t3, 4($t0)      # x
+    li $t4, 0
+    sw $t4, 8($t0)      # y = 0
+    sw $t3, 12($t0)     # old_x = x
+    sw $t4, 16($t0)     # old_y = 0
+    sw $zero, 20($t0)   # shoot_counter = 0
+    sw $zero, 24($t0)   # move_counter = 0
+    sw $s6, 28($t0)     # type (0 o 1)
     
+    # AGREGAR: Dirección horizontal aleatoria
+    li $v0, 30
+    syscall
+    move $t5, $a0
+    andi $t5, $t5, 0x3       # 0, 1, 2, o 3
+    
+    # Convertir a -1, 0, o 1
+    li $t6, 2
+    beq $t5, $t6, set_direction_left
+    li $t6, 3
+    beq $t5, $t6, set_direction_right
+    # Si es 0 o 1, no moverse horizontalmente
+    sw $zero, 32($t0)
+    j spawn_enemy_done
+    
+set_direction_left:
+    li $t6, -1
+    sw $t6, 32($t0)
+    j spawn_enemy_done
+    
+set_direction_right:
+    li $t6, 1
+    sw $t6, 32($t0)
+
 spawn_use_normal_limits:
     # Tipo 1: 9x9
     li $t4, 55              # 64 - 9 = 55
@@ -597,16 +631,6 @@ spawn_check_x_limit:
 spawn_center_enemy:
     li $t3, 27              # Centrar
     
-spawn_set_enemy_pos:
-    sw $t3, 4($t0)      # x
-    li $t4, 0
-    sw $t4, 8($t0)      # y = 0
-    sw $t3, 12($t0)     # old_x = x
-    sw $t4, 16($t0)     # old_y = 0
-    sw $zero, 20($t0)   # shoot_counter = 0
-    sw $zero, 24($t0)   # move_counter = 0
-    sw $s6, 28($t0)     # type (0 o 1)
-
 spawn_enemy_done:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
@@ -664,12 +688,91 @@ update_single_enemy:
     sw $t2, 12($s0)
     sw $t3, 16($s0)
     
-    # Mover hacia abajo
+    # ===== MOVIMIENTO VERTICAL (hacia abajo) =====
     lw $t4, ENEMY_SPEED
     add $t3, $t3, $t4
     sw $t3, 8($s0)
     
+    # ===== MOVIMIENTO HORIZONTAL =====
+    lw $t5, 32($s0)          # Cargar dirección
+    beqz $t5, skip_horizontal_move
+    
+    lw $t6, ENEMY_HORIZONTAL_SPEED
+    
+    # Si dirección es negativa, multiplicar velocidad por -1
+    bltz $t5, move_enemy_left
+    
+move_enemy_right:
+    add $t2, $t2, $t6        # x += velocidad
+    j check_horizontal_bounds
+    
+move_enemy_left:
+    sub $t2, $t2, $t6        # x -= velocidad
+    
+check_horizontal_bounds:
+    # Verificar límites y cambiar dirección si es necesario
+    bltz $t2, bounce_enemy_right
+    
+    # Verificar límite derecho según tipo
+    lw $t7, 28($s0)          # Cargar tipo
+    beqz $t7, check_bounds_normal
+    lw $t8, ENEMY_TYPE_2_SIZE
+    j calc_right_bound
+    
+check_bounds_normal:
+    lw $t8, ENEMY_SIZE
+    
+calc_right_bound:
+    lw $t9, SCREEN_WIDTH
+    sub $t9, $t9, $t8        # límite_derecho = 64 - tamaño
+    bgt $t2, $t9, bounce_enemy_left
+    j save_new_x
+    
+bounce_enemy_right:
+    li $t2, 0                # Posición X = 0
+    li $t5, 1                # Cambiar dirección a derecha
+    sw $t5, 32($s0)
+    j save_new_x
+    
+bounce_enemy_left:
+    move $t2, $t9            # Posición X = límite
+    li $t5, -1               # Cambiar dirección a izquierda
+    sw $t5, 32($s0)
+    
+save_new_x:
+    sw $t2, 4($s0)           # Guardar nueva posición X
+    
+skip_horizontal_move:
+    
 skip_enemy_move_safe:
+    # Cambiar dirección aleatoriamente cada cierto tiempo
+    lw $t7, 24($s0)
+    lw $t8, ENEMY_DIRECTION_CHANGE_RATE
+    bne $t7, $t8, skip_direction_change
+    
+    # Generar nueva dirección aleatoria
+    li $v0, 30
+    syscall
+    move $t9, $a0
+    andi $t9, $t9, 0x3       # 0-3
+    
+    li $a0, 2
+    blt $t9, $a0, set_no_horizontal
+    beq $t9, $a0, set_left
+    # Si es 3, ir a la derecha
+    li $t9, 1
+    sw $t9, 32($s0)
+    j skip_direction_change
+    
+set_left:
+    li $t9, -1
+    sw $t9, 32($s0)
+    j skip_direction_change
+    
+set_no_horizontal:
+    sw $zero, 32($s0)
+    
+skip_direction_change:
     # Actualizar contador de disparo
     lw $t5, 20($s0)
     addi $t5, $t5, 1
@@ -1565,13 +1668,10 @@ check_collisions:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     
-    lw $t0, invulnerable_counter
-    bnez $t0, collision_done
-    
     lw $t0, player_x
     lw $t1, player_y
     
-    # Verificar cada bala
+    # Verificar cada bala (sin verificar invulnerabilidad)
     la $t3, bullet_0
     jal check_bullet_collision
     
@@ -1586,6 +1686,10 @@ check_collisions:
     
     la $t3, bullet_4
     jal check_bullet_collision
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
     
 collision_done:
     lw $ra, 0($sp)
@@ -1616,11 +1720,28 @@ check_bullet_collision:
     blt $s1, $t1, check_bullet_end
     
     # Colisión detectada
-    addi $sp, $sp, -4
+    # AGREGAR: Desactivar la bala antes de llamar a handle_hit
+    addi $sp, $sp, -12
     sw $ra, 0($sp)
+    sw $t0, 4($sp)
+    sw $t3, 8($sp)
+    
+    # Borrar bala visualmente
+    lw $a0, 12($t3)
+    lw $a1, 16($t3)
+    jal erase_bullet
+    
+    # Restaurar $t3 y desactivar
+    lw $t3, 8($sp)
+    sw $zero, 0($t3)    # ? DESACTIVAR LA BALA
+    
+    # Ahora manejar el daño
     jal handle_hit
+    
+    lw $t3, 8($sp)
+    lw $t0, 4($sp)
     lw $ra, 0($sp)
-    addi $sp, $sp, 4
+    addi $sp, $sp, 12
 
 check_bullet_end:
     jr $ra
@@ -1908,25 +2029,13 @@ handle_hit:
     li $v0, 4
     la $a0, newline
     syscall
-    
-    lw $t1, INVULNERABLE_TIME
-    sw $t1, invulnerable_counter
-    
+   
     blez $t0, set_game_over
     jr $ra
 
 set_game_over:
     li $t2, 1
     sw $t2, game_over_flag
-    jr $ra
-
-# ===== ACTUALIZAR INVULNERABILIDAD =====
-update_invulnerability:
-    lw $t0, invulnerable_counter
-    beqz $t0, invuln_done
-    addi $t0, $t0, -1
-    sw $t0, invulnerable_counter
-invuln_done:
     jr $ra
 
 # ===== DIBUJAR BALAS =====

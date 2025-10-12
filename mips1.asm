@@ -1,5 +1,5 @@
 .data
-bitmap_base: .word 0x10010000
+bitmap_base: .word 0x10040000
 color_rojo: .word 0xFFFF0000      # Mario (rojo)
 color_verde: .word 0xFF00FF00     # Plataformas
 color_amarillo: .word 0xFFFFFF00  # Moneda
@@ -18,7 +18,7 @@ plataformas:
     .word 180, 120, 60, 16     # Plataforma 3
     .word -1, -1, -1, -1       # Terminador
 
-# Monedas: x, y, recolectada (0=no, 1=sÌ)
+# Monedas: x, y, recolectada (0=no, 1=s√≠)
 monedas:
     .word 120, 130, 0
     .word 70, 80, 0
@@ -27,7 +27,7 @@ monedas:
 
 puntos: .word 0
 msg_puntos: .asciiz "Puntos: "
-msg_victoria: .asciiz "\n°GANASTE! Recolectaste todas las monedas!\n"
+msg_victoria: .asciiz "\n¬°GANASTE! Recolectaste todas las monedas!\n"
 
 # Variables para control de input
 last_key_pressed: .word 0
@@ -37,7 +37,7 @@ input_cooldown: .word 0
 .globl main
 
 main:
-    # Inicializar posiciÛn de Mario
+    # Inicializar posici√≥n de Mario
     li $s0, 50       # x jugador
     li $s1, 180      # y jugador
     li $s2, 0        # velY
@@ -47,7 +47,7 @@ main:
     jal draw_level
     
 loop:
-    # Guardar posiciÛn anterior
+    # Guardar posici√≥n anterior
     move $t9, $s0
     move $t8, $s1
     
@@ -115,7 +115,7 @@ leer_tecla:
     j aplicar_fisica
 
 iniciar_salto:
-    # Verificar si est· en una plataforma
+    # Verificar si est√° en una plataforma
     jal check_on_platform
     beq $v0, $zero, aplicar_fisica
     
@@ -146,17 +146,17 @@ aplicar_fisica:
     add $s2, $s2, $t2       # velY += gravedad
     add $s1, $s1, $s2       # y += velY
     
-    # Verificar colisiÛn con plataformas
+    # Verificar colisi√≥n con plataformas
     jal check_platform_collision
     
-    # Verificar colisiÛn con monedas
+    # Verificar colisi√≥n con monedas
     jal check_coin_collision
     
     # Verificar victoria
     jal check_victory
     
 actualizar:
-    # Solo redibujar si cambiÛ la posiciÛn
+    # Solo redibujar si cambi√≥ la posici√≥n
     bne $s0, $t9, redibujar
     bne $s1, $t8, redibujar
     j loop
@@ -196,7 +196,7 @@ draw_col:
     add $t6, $a0, $t5
     add $t7, $a1, $t4
     
-    # Verificar lÌmites
+    # Verificar l√≠mites
     blt $t6, 0, skip_pixel
     bge $t6, 256, skip_pixel
     blt $t7, 0, skip_pixel
@@ -217,7 +217,7 @@ skip_pixel:
     blt $t4, $t8, draw_row
     jr $ra
 
-# Dibuja un rect·ngulo en (x=$a0, y=$a1) de tamaÒo (w=$a2, h=$a3) con color en $s7
+# Dibuja un rect√°ngulo en (x=$a0, y=$a1) de tama√±o (w=$a2, h=$a3) con color en $s7
 draw_rectangle:
     la $t0, bitmap_base
     lw $t0, 0($t0)
@@ -231,7 +231,7 @@ rect_col:
     add $t6, $a0, $t5
     add $t7, $a1, $t4
     
-    # Verificar lÌmites
+    # Verificar l√≠mites
     blt $t6, 0, rect_skip
     bge $t6, 256, rect_skip
     blt $t7, 0, rect_skip
@@ -314,7 +314,7 @@ coins_done:
     addi $sp, $sp, 4
     jr $ra
 
-# Verifica si Mario est· sobre una plataforma
+# Verifica si Mario est√° sobre una plataforma
 check_on_platform:
     la $t0, plataformas
 check_plat_loop:
@@ -345,7 +345,7 @@ not_on_platform:
     li $v0, 0
     jr $ra
 
-# Verifica colisiÛn con plataformas y ajusta posiciÛn
+# Verifica colisi√≥n con plataformas y ajusta posici√≥n
 check_platform_collision:
     la $t0, plataformas
 coll_plat_loop:
@@ -378,7 +378,7 @@ next_coll_plat:
 no_collision:
     jr $ra
 
-# Verifica colisiÛn con monedas
+# Verifica colisi√≥n con monedas
 check_coin_collision:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
@@ -428,7 +428,7 @@ coin_done:
     addi $sp, $sp, 4
     jr $ra
 
-# Muestra la puntuaciÛn
+# Muestra la puntuaci√≥n
 show_score:
     li $v0, 4
     la $a0, msg_puntos
@@ -444,7 +444,7 @@ show_score:
     
     jr $ra
 
-# Verifica si ganÛ el juego
+# Verifica si gan√≥ el juego
 check_victory:
     addi $sp, $sp, -4
     sw $ra, 0($sp)

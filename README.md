@@ -24,6 +24,7 @@ Condiciones de Victoria/Derrota: Gana recolectando todas las monedas, pierde si 
 ## Instalación y Ejecución
 Instalar MARS 4.5: Descarga desde https://dpetersanderson.github.io/download.html.
 Cargar Código: Abre mario.asm en MARS.
+
 Configurar Pantalla:
 Herramientas > Bitmap Display
 Ancho/Alto de Unidad: 8 píxeles

@@ -7,7 +7,7 @@ Asteroids es un clásico videojuego de arcade lanzado originalmente por Atari en
 Mecánicas del Jugador: Desplazamiento de la nave alrededor del mapa con WASD. 
 
 ### Físicas y Colisiones
-colisiones con asteroides y generacion de los mismos con un vector de movimiento.
+Colisiones con asteroides y generacion de los mismos con un vector de movimiento. Se generan dos tipos de asteroides.
 Interfaz: Muestra vidas en la parte superior izquierda y al colisionar con un asteroide la mismas son reducidas.
 Condiciones de Victoria/Derrota: Sobrevive el mayor tiempo posible y si se queda sin vidas aperece una "calavera" en la pantalla.
 

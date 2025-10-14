@@ -1,4 +1,4 @@
-# Game 1942 - Version 2.0 
+# Game 1942 - Version 3.0 
 
 .data
     .align 2
@@ -49,7 +49,7 @@
     ENEMY_DIRECTION_CHANGE_RATE: .word 10   # Cada 60 frames cambia dirección
     
     # Después de ENEMY_SHOOT_RATE
-    ENEMY_TYPE_2_SIZE:   .word 11        # 11x11 (tamaño real del sprite)
+    ENEMY_TYPE_2_SIZE:   .word 9        # 11x11 (tamaño real del sprite)
     enemy_type_2_speed:  .word 1        # Misma velocidad
     enemy_spawn_count:   .word 0        # Contador de spawns
     SPAWN_TYPE_2_EVERY:  .word 5        # Cada 5 enemigos
@@ -66,6 +66,14 @@
     player_score:    .word 0
     POINTS_PER_KILL: .word 50
     game_over_flag:  .word 0
+    game_won_flag:   .word 0
+    
+    # Sistema de Barco Final
+    final_ship_active:     .word 0
+    final_ship_y_offset:   .word -48     # Empieza arriba (fuera de pantalla, negativo)
+    final_ship_scroll_speed: .word 1     # Velocidad de aparición
+    game_timer:            .word 0       
+    FINAL_SHIP_TRIGGER:    .word 6000
     
     # Paleta de colores
     sea_colors:
@@ -98,6 +106,11 @@
     enemy2_green_light: .word 0x0080CF10  # Verde claro (cuerpo)
     enemy2_green_dark:  .word 0x00009300  # Verde oscuro (sombras)
     enemy2_red:         .word 0x00D82800  # Rojo (cabina)
+    
+    # Colores del enemigo tipo 3
+    enemy3_yellow:      .word 0x00F0BC3C  # Amarillo (cuerpo)
+    enemy3_red:         .word 0x00D82800  # Rojo (detalles)
+    enemy3_white:       .word 0x00FCFCFC  # Blanco (cabina)
     
     # Array de balas enemigas (cada bala son 5 words: active, x, y, old_x, old_y)
     .align 4
@@ -161,21 +174,31 @@
     .byte 0,0,0,1,1,1,0,0,0
     .byte 0,0,1,1,2,1,1,0,0
     
-    # Sprite del enemigo tipo 2 (A2) 11x11 (0=transparente, 1=verde claro, 2=verde oscuro, 3=rojo)
-    # Sprite del enemigo tipo 2 (A2) 11x11 (0=transparente, 1=verde claro, 2=verde oscuro, 3=rojo)
+    # Sprite del enemigo tipo 2 (A2) 9x9 (0=transparente, 1=verde claro, 2=verde oscuro, 3=rojo)
     .align 2
     enemy2_sprite:
-    .byte 0,0,0,0,0,1,0,0,0,0,0
-    .byte 0,0,0,1,1,1,2,1,0,0,0
-    .byte 0,0,0,0,1,1,2,0,0,0,0
-    .byte 0,0,0,0,0,1,0,0,0,0,0
-    .byte 0,0,0,0,2,1,1,2,0,0,0
-    .byte 0,0,0,2,1,1,1,1,2,0,0
-    .byte 0,1,1,1,1,3,3,1,1,1,0
-    .byte 0,0,1,1,1,3,3,1,1,0,0
-    .byte 0,0,0,1,1,1,1,1,0,0,0
-    .byte 0,0,0,2,1,1,1,2,0,0,0
-    .byte 0,0,1,1,1,2,2,1,1,0,0
+    .byte 0,0,0,0,1,0,0,0,0
+    .byte 0,0,1,1,2,2,1,0,0
+    .byte 0,0,0,1,2,1,0,0,0
+    .byte 0,0,0,0,1,0,0,0,0
+    .byte 0,2,2,1,1,1,2,2,0
+    .byte 1,1,1,1,3,1,1,1,1
+    .byte 0,1,1,1,3,1,1,1,0
+    .byte 0,0,0,1,1,1,0,0,0
+    .byte 0,0,1,1,2,1,1,0,0
+    
+    # Sprite del enemigo tipo 3 (KDK2) 9x9 (0=transparente, 1=amarillo, 2=rojo, 3=blanco)
+    .align 2
+    enemy3_sprite:
+    .byte 0,0,0,0,1,0,0,0,0
+    .byte 0,0,1,1,2,2,1,0,0
+    .byte 0,0,0,1,2,1,0,0,0
+    .byte 0,0,0,0,1,0,0,0,0
+    .byte 0,2,2,1,1,1,2,2,0
+    .byte 1,1,1,1,3,1,1,1,1
+    .byte 0,1,1,1,3,1,1,1,0
+    .byte 0,0,0,1,1,1,0,0,0
+    .byte 0,0,1,1,2,1,1,0,0
     
     # Sprite del portaaviones 32x48 (0=mar, 1=gris, 2=gris claro, 3=negro)
     .align 2
@@ -189,54 +212,54 @@
     .byte 0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0
 
      # Fila 6-11: Cubierta superior
-.byte 0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0
-.byte 0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0
-.byte 0,0,0,0,0,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,0,0,0,0,0,0,0
-.byte 0,0,0,0,1,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0,0,0,0,0,0
-.byte 0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0
-.byte 0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0
+     .byte 0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0
+     .byte 0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0
+     .byte 0,0,0,0,0,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,0,0,0,0,0,0,0
+     .byte 0,0,0,0,1,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0,0,0,0,0,0
+     .byte 0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0
+     .byte 0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0
 
-# Fila 12-23: Cubierta principal con líneas de aterrizaje
-.byte 0,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,0,0
-.byte 0,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,0,0
-.byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
-.byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
-.byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
-.byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
-.byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
-.byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
-.byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
-.byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
-.byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
-.byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+     # Fila 12-23: Cubierta principal con líneas de aterrizaje
+     .byte 0,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,0,0
+     .byte 0,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,0,0
+     .byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+     .byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+     .byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
+     .byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
+     .byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+     .byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+     .byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
+     .byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
+     .byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+     .byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
 
-# Fila 24-35: Cubierta media
-.byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
-.byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
-.byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
-.byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
-.byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
-.byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
-.byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
-.byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
-.byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
-.byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
-.byte 0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
-.byte 0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+     # Fila 24-35: Cubierta media
+     .byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
+     .byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
+     .byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+     .byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+     .byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
+     .byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
+     .byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+     .byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+     .byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
+     .byte 1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,0
+     .byte 0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+     .byte 0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
 
-# Fila 36-47: Casco inferior
-.byte 0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0
-.byte 0,0,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,1,1,0,0,0
-.byte 0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0
-.byte 0,0,0,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,1,1,0,0,0,0
-.byte 0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0
-.byte 0,0,0,0,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,1,1,0,0,0,0,0
-.byte 0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0
-.byte 0,0,0,0,0,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,1,1,0,0,0,0,0,0
-.byte 0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0
-.byte 0,0,0,0,0,0,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,3,1,1,0,0,0,0,0,0,0
-.byte 0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0
-.byte 0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0
+     # Fila 36-47: Casco inferior
+     .byte 0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0
+     .byte 0,0,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,1,1,0,0,0
+     .byte 0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0
+     .byte 0,0,0,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,1,1,0,0,0,0
+     .byte 0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0
+     .byte 0,0,0,0,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,1,1,0,0,0,0,0
+     .byte 0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0
+     .byte 0,0,0,0,0,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,1,1,0,0,0,0,0,0
+     .byte 0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0
+     .byte 0,0,0,0,0,0,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,3,1,1,0,0,0,0,0,0,0
+     .byte 0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0
+     .byte 0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0
     .align 2
     	
     
@@ -285,6 +308,8 @@
     msg_score:       .asciiz "Puntos: "
     msg_kill:        .asciiz "¡Enemigo Muerto!\n"
     msg_game_over:   .asciiz "\n*** GAME OVER ***\n"
+    msg_victory:     .asciiz "\n*** ¡VICTORIA! Has llegado al portaaviones final! ***\n"
+    msg_final_ship:  .asciiz "\n¡Portaaviones final a la vista!\n"
     newline:         .asciiz "\n"
     
 .text
@@ -318,19 +343,80 @@ game_loop:
     lw $t0, game_over_flag
     bnez $t0, game_over
     
+    lw $t0, game_won_flag
+    bnez $t0, game_victory
+    
+    # Incrementar timer del juego
+    lw $t0, game_timer
+    addi $t0, $t0, 1
+    sw $t0, game_timer
+    
+    # Verificar si activar barco final
+    lw $t1, FINAL_SHIP_TRIGGER
+    blt $t0, $t1, continue_normal_game
+    
+    # Activar barco final si no está activo
+    lw $t2, final_ship_active
+    bnez $t2, continue_normal_game
+    
+    li $t2, 1
+    sw $t2, final_ship_active    
+    
+    # Mostrar mensaje
+    li $v0, 4
+    la $a0, msg_final_ship
+    syscall
+
+continue_normal_game:
     jal scroll_sea
     jal process_input
+    
+    # Siempre actualizar enemigos y balas existentes
     jal update_enemies
-    jal spawn_enemy
     jal update_bullets
+    
+    # Solo spawnear nuevos enemigos si el barco final NO está activo
+    lw $t0, final_ship_active
+    bnez $t0, skip_enemy_spawn
+    jal spawn_enemy
+skip_enemy_spawn:
+    
     jal update_player_bullets
     jal check_collisions
     jal check_bullet_enemy_collisions
+    
+    # Actualizar y dibujar barco final si está activo
+    lw $t0, final_ship_active
+    beqz $t0, skip_final_ship
+    jal update_final_ship
+    jal draw_final_ship
+skip_final_ship:
+    
     jal draw_enemies
     jal draw_bullets
     jal draw_player_bullets
+    jal draw_player_new        # Redibujar jugador encima de todo
     jal delay
     j game_loop
+
+game_victory:
+    li $v0, 4
+    la $a0, msg_victory
+    syscall
+    
+    # Mostrar puntaje final
+    li $v0, 4
+    la $a0, msg_score
+    syscall
+    li $v0, 1
+    lw $a0, player_score
+    syscall
+    li $v0, 4
+    la $a0, newline
+    syscall
+    
+    li $v0, 10
+    syscall
 
 game_over:
     li $v0, 4
@@ -544,16 +630,39 @@ spawn_enemy:
     sw $t7, enemy_spawn_count
     
     # Determinar tipo de enemigo
-    lw $t8, SPAWN_TYPE_2_EVERY
-    div $t7, $t8
-    mfhi $t9                    # t9 = resto (0 si es múltiplo de 5)
+    # Tipo 3 (amarillo): cada 15 enemigos (spawn_count % 15 == 0)
+    # Tipo 2 (verde): cada 5 enemigos (spawn_count % 5 == 0 y no múltiplo de 15)
+    # Tipo 1 (gris): resto
     
-    # Si resto == 0, spawner tipo 2, sino tipo 1
-    li $s6, 0                   # s6 = tipo (0=normal, 1=tipo2)
-    bnez $t9, spawn_type_normal
-    li $s6, 1                   # Es tipo 2
+    li $s6, 0                   # s6 = tipo (0=normal, 1=verde, 2=amarillo)
+    
+    # Verificar si es múltiplo de 15 (tipo 3)
+    li $t8, 15
+    div $t7, $t8
+    mfhi $t9                    # t9 = resto
+    beqz $t9, spawn_type_3      # Si resto == 0, es tipo 3
+    
+    # Verificar si es múltiplo de 5 (tipo 2)
+    li $t8, 5
+    div $t7, $t8
+    mfhi $t9                    # t9 = resto
+    beqz $t9, spawn_type_2      # Si resto == 0, es tipo 2
+    
+    # Si no, es tipo 1 (normal)
+    j spawn_type_normal
+
+spawn_type_3:
+    li $s6, 2                   # Tipo 3 (amarillo)
+    j spawn_find_slot
+
+spawn_type_2:
+    li $s6, 1                   # Tipo 2 (verde)
+    j spawn_find_slot
     
 spawn_type_normal:
+    li $s6, 0                   # Tipo 1 (gris)
+    
+spawn_find_slot:
     # Buscar slot libre
     la $t0, enemy_0
     lw $t1, 0($t0)
@@ -580,12 +689,14 @@ spawn_enemy_in_slot:
     move $t3, $a0
     andi $t3, $t3, 0x3F
     
-    # Ajustar límites según tipo
-    beqz $s6, spawn_use_normal_limits
-    # Tipo 2: 11x11
-    li $t4, 53              # 64 - 11 = 53
-    j spawn_check_x_limit
-
+    # Límite para enemigos 9x9
+    li $t4, 55              # 64 - 9 = 55
+    bgt $t3, $t4, spawn_center_enemy
+    j spawn_set_enemy_pos
+    
+spawn_center_enemy:
+    li $t3, 27              # Centrar
+    
 spawn_set_enemy_pos:
     sw $t3, 4($t0)      # x
     li $t4, 0
@@ -594,9 +705,9 @@ spawn_set_enemy_pos:
     sw $t4, 16($t0)     # old_y = 0
     sw $zero, 20($t0)   # shoot_counter = 0
     sw $zero, 24($t0)   # move_counter = 0
-    sw $s6, 28($t0)     # type (0 o 1)
+    sw $s6, 28($t0)     # type (0, 1, o 2)
     
-    # AGREGAR: Dirección horizontal aleatoria
+    # Dirección horizontal aleatoria
     li $v0, 30
     syscall
     move $t5, $a0
@@ -619,17 +730,6 @@ set_direction_left:
 set_direction_right:
     li $t6, 1
     sw $t6, 32($t0)
-
-spawn_use_normal_limits:
-    # Tipo 1: 9x9
-    li $t4, 55              # 64 - 9 = 55
-    
-spawn_check_x_limit:
-    bgt $t3, $t4, spawn_center_enemy
-    j spawn_set_enemy_pos
-    
-spawn_center_enemy:
-    li $t3, 27              # Centrar
     
 spawn_enemy_done:
     lw $ra, 0($sp)
@@ -713,11 +813,10 @@ check_horizontal_bounds:
     # Verificar límites y cambiar dirección si es necesario
     bltz $t2, bounce_enemy_right
     
-    # Verificar límite derecho según tipo
-    lw $t7, 28($s0)          # Cargar tipo
-    beqz $t7, check_bounds_normal
-    lw $t8, ENEMY_TYPE_2_SIZE
-    j calc_right_bound
+    # Ambos enemigos son 9x9
+    lw $t8, ENEMY_SIZE
+    lw $t9, SCREEN_WIDTH
+    sub $t9, $t9, $t8        # límite_derecho = 64 - 9 = 55
     
 check_bounds_normal:
     lw $t8, ENEMY_SIZE
@@ -959,13 +1058,8 @@ erase_enemy:
     move $s0, $a0
     move $s1, $a1
     
-    # Determinar tamaño según tipo
-    beqz $a2, erase_type_normal
-    lw $s2, ENEMY_TYPE_2_SIZE   # Tipo 2: 1x1
-    j erase_enemy_continue
-    
-erase_type_normal:
-    lw $s2, ENEMY_SIZE          # Tipo 1: 9x9
+    # Ambos enemigos son 9x9
+    lw $s2, ENEMY_SIZE
     
 erase_enemy_continue:
     la $s3, wave_pattern
@@ -1036,13 +1130,86 @@ draw_enemy_at:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     
-    # Verificar tipo (viene en $a2)
-    beqz $a2, draw_enemy_type_normal
+    # Verificar tipo (viene en $a2: 0=gris, 1=verde, 2=amarillo)
+    beqz $a2, draw_enemy_type_1
+    li $t9, 1
+    beq $a2, $t9, draw_enemy_type_2
+    li $t9, 2
+    beq $a2, $t9, draw_enemy_type_3
+    j draw_enemy_done_loop
     
-    # ========== TIPO 2: Dibujar sprite verde ==========
+    # ========== TIPO 3: Dibujar sprite amarillo ==========
+draw_enemy_type_3:
     move $t0, $a0           # x position
     move $t1, $a1           # y position
-    lw $t2, ENEMY_TYPE_2_SIZE    # 11
+    lw $t2, ENEMY_SIZE      # 9
+    
+    la $s0, enemy3_sprite
+    lw $s1, enemy3_yellow   # Amarillo
+    lw $s2, enemy3_red      # Rojo
+    lw $s3, enemy3_white    # Blanco
+    
+    li $t4, 0               # Y counter
+    
+draw_enemy3_y:
+    bge $t4, $t2, draw_enemy_done_loop
+    
+    li $t5, 0               # X counter
+    
+draw_enemy3_x:
+    bge $t5, $t2, draw_enemy3_next_y
+    
+    # Obtener índice del sprite (Y * 9 + X)
+    sll $t6, $t4, 3         # Y * 8
+    add $t6, $t6, $t4       # Y * 9
+    add $t6, $t6, $t5       # + X
+    add $t7, $s0, $t6
+    lb $t7, 0($t7)          # Valor del pixel
+    
+    # Si es 0, es transparente
+    beqz $t7, skip_enemy3_pixel
+    
+    # Seleccionar color según valor
+    li $t8, 1
+    beq $t7, $t8, use_enemy3_yellow
+    li $t8, 2
+    beq $t7, $t8, use_enemy3_red
+    li $t8, 3
+    beq $t7, $t8, use_enemy3_white
+    j skip_enemy3_pixel
+    
+use_enemy3_yellow:
+    move $t9, $s1
+    j draw_enemy3_pixel
+use_enemy3_red:
+    move $t9, $s2
+    j draw_enemy3_pixel
+use_enemy3_white:
+    move $t9, $s3
+    
+draw_enemy3_pixel:
+    add $s4, $t1, $t4
+    sll $s4, $s4, 6
+    add $s4, $s4, $t0
+    add $s4, $s4, $t5
+    sll $s4, $s4, 2
+    add $s4, $gp, $s4
+    
+    sw $t9, 0($s4)
+    
+skip_enemy3_pixel:
+    addi $t5, $t5, 1
+    j draw_enemy3_x
+
+draw_enemy3_next_y:
+    addi $t4, $t4, 1
+    j draw_enemy3_y
+    
+    # ========== TIPO 2: Dibujar sprite verde ==========
+draw_enemy_type_2:
+    move $t0, $a0           # x position
+    move $t1, $a1           # y position
+    lw $t2, ENEMY_SIZE      # 9
     
     la $s0, enemy2_sprite
     lw $s1, enemy2_green_light   # Verde claro
@@ -1059,12 +1226,9 @@ draw_enemy2_y:
 draw_enemy2_x:
     bge $t5, $t2, draw_enemy2_next_y
     
-    # Obtener índice del sprite (Y * 11 + X)
-    # 11 = 8 + 2 + 1
+    # Obtener índice del sprite (Y * 9 + X)
     sll $t6, $t4, 3         # Y * 8
-    sll $t7, $t4, 1         # Y * 2
-    add $t6, $t6, $t7       # Y * 10
-    add $t6, $t6, $t4       # Y * 11
+    add $t6, $t6, $t4       # Y * 9
     add $t6, $t6, $t5       # + X
     add $t7, $s0, $t6
     lb $t7, 0($t7)          # Valor del pixel
@@ -1108,8 +1272,8 @@ draw_enemy2_next_y:
     addi $t4, $t4, 1
     j draw_enemy2_y
     
-    # ========== TIPO 1: Dibujar sprite original ==========
-draw_enemy_type_normal:
+    # ========== TIPO 1: Dibujar sprite gris ==========
+draw_enemy_type_1:
     move $t0, $a0
     move $t1, $a1
     lw $t2, ENEMY_SIZE
@@ -1893,20 +2057,12 @@ test_bullet_hit_enemy:
     lw $t2, 4($t9)          # enemy_x
     lw $t3, 8($t9)          # enemy_y
     
-    # Calcular límites
+    # Calcular límites X
     lw $t4, PLAYER_BULLET_WIDTH
     add $t4, $t0, $t4       # bullet_right
     
-    # Obtener tamaño según tipo
-    lw $t7, 28($t9)         # Cargar tipo de enemigo
-    beqz $t7, collision_normal_size
-    lw $t5, ENEMY_TYPE_2_SIZE
-    j collision_calc_right
-
-collision_normal_size:
+    # Todos los enemigos son 9x9
     lw $t5, ENEMY_SIZE
-
-collision_calc_right:
     add $t5, $t2, $t5       # enemy_right
     
     # Colisión en X?
@@ -1917,20 +2073,8 @@ collision_calc_right:
     lw $t4, PLAYER_BULLET_HEIGHT
     add $t4, $t1, $t4       # bullet_bottom
     
-    # Calcular límites Y
-    lw $t4, PLAYER_BULLET_HEIGHT
-    add $t4, $t1, $t4       # bullet_bottom
-
-    # Obtener tamaño según tipo para Y
-    lw $t7, 28($t9)
-    beqz $t7, collision_normal_size_y
-    lw $t5, ENEMY_TYPE_2_SIZE
-    j collision_calc_bottom
-
-collision_normal_size_y:
+    # Todos los enemigos son 9x9
     lw $t5, ENEMY_SIZE
-
-collision_calc_bottom:
     add $t5, $t3, $t5       # enemy_bottom
     
     # Colisión en Y?
@@ -1945,16 +2089,28 @@ collision_calc_bottom:
     
     # Sumar puntos según tipo de enemigo
     lw $t6, player_score
-    lw $s5, 28($t9)          # Cargar tipo de enemigo
-    beqz $s5, points_type_normal
+    lw $s5, 28($t9)          # Cargar tipo de enemigo (0=gris, 1=verde, 2=amarillo)
+    
+    # Verificar tipo 2 (amarillo)
+    li $t8, 2
+    beq $s5, $t8, points_type_3
+    
+    # Verificar tipo 1 (verde)
+    li $t8, 1
+    beq $s5, $t8, points_type_2
+    
+    # Tipo 0 (gris): 50 puntos
+    lw $t7, POINTS_PER_KILL
+    j add_points
 
-    # Tipo 2: 100 puntos
+points_type_2:
+    # Tipo 1 (verde): 100 puntos
     li $t7, 100
     j add_points
 
-points_type_normal:
-    # Tipo 1: 50 puntos
-    lw $t7, POINTS_PER_KILL
+points_type_3:
+    # Tipo 2 (amarillo): 150 puntos
+    li $t7, 150
 
 add_points:
     add $t6, $t6, $t7
@@ -1979,7 +2135,7 @@ add_points:
     # Borrar enemigo
     lw $a0, 12($t9)
     lw $a1, 16($t9)
-    lw $a2, 28($t9)     # ? AGREGAR ESTA LÍNEA
+    lw $a2, 28($t9)         # Pasar tipo de enemigo
     jal erase_enemy
     
     # Restaurar punteros
@@ -2372,9 +2528,147 @@ draw_carrier_done:
     addi $sp, $sp, 4
     jr $ra
 
-# ===== OBTENER COLOR DE FONDO (MAR O PORTAAVIONES) =====
-# Parámetros: $a0 = x, $a1 = y
-# Retorna: $v0 = color
+# ===== ACTUALIZAR BARCO FINAL =====
+update_final_ship:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    # Mover el barco hacia abajo (apareciendo desde arriba)
+    lw $t0, final_ship_y_offset
+    lw $t1, final_ship_scroll_speed
+    add $t0, $t0, $t1           # Sumar para mover hacia abajo
+    sw $t0, final_ship_y_offset
+    
+    # Verificar si el barco está completamente visible
+    # El barco está completo cuando Y >= 8 (visible en pantalla)
+    li $t2, 8
+    blt $t0, $t2, update_final_ship_done
+    
+    # Barco completamente visible - Victoria
+    li $t3, 1
+    sw $t3, game_won_flag
+
+update_final_ship_done:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== DIBUJAR BARCO FINAL =====
+draw_final_ship:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    # Posición: centrado horizontalmente, Y dinámico
+    li $t0, 16              # x = 16 (centrado en 64)
+    lw $t1, final_ship_y_offset  # y = offset dinámico
+    lw $t2, CARRIER_HEIGHT  # 48
+    li $t3, 32              # ancho
+    
+    # Si el barco no ha empezado a aparecer, no dibujar
+    li $t4, 64
+    bge $t1, $t4, draw_final_ship_done
+    
+    la $s0, carrier_sprite
+    lw $s1, carrier_gray
+    lw $s2, carrier_light_gray
+    lw $s3, carrier_black
+    la $s4, sea_colors
+    
+    li $t4, 0               # Y counter
+    
+draw_final_ship_y:
+    bge $t4, $t2, draw_final_ship_done
+    
+    # Calcular Y en pantalla
+    add $t5, $t1, $t4
+    # Si Y >= 64, no dibujar esta fila
+    li $t6, 64
+    bge $t5, $t6, draw_final_ship_next_y
+    # Si Y < 0, no dibujar esta fila
+    bltz $t5, draw_final_ship_next_y
+    
+    li $t6, 0               # X counter
+    
+draw_final_ship_x:
+    bge $t6, $t3, draw_final_ship_next_y
+    
+    # Calcular X en pantalla
+    add $t7, $t0, $t6
+    # Si X >= 64, no dibujar este pixel
+    li $t8, 64
+    bge $t7, $t8, skip_final_ship_pixel
+    # Si X < 0, no dibujar este pixel
+    bltz $t7, skip_final_ship_pixel
+    
+    # Obtener índice del sprite (Y * 32 + X)
+    sll $t7, $t4, 5         # Y * 32
+    add $t7, $t7, $t6       # + X
+    add $t8, $s0, $t7
+    lb $t8, 0($t8)          # Valor del pixel
+    
+    # Si es 0, dibujar mar
+    beqz $t8, draw_final_ship_sea
+    
+    # Seleccionar color según valor
+    li $t9, 1
+    beq $t8, $t9, use_final_carrier_gray
+    li $t9, 2
+    beq $t8, $t9, use_final_carrier_light
+    li $t9, 3
+    beq $t8, $t9, use_final_carrier_black
+    j skip_final_ship_pixel
+    
+use_final_carrier_gray:
+    move $s5, $s1
+    j draw_final_ship_pixel
+use_final_carrier_light:
+    move $s5, $s2
+    j draw_final_ship_pixel
+use_final_carrier_black:
+    move $s5, $s3
+    j draw_final_ship_pixel
+
+draw_final_ship_sea:
+    # Dibujar patrón de mar
+    add $s6, $t1, $t4       # Y absoluto
+    andi $s6, $s6, 0xF
+    sll $s6, $s6, 5
+    la $s7, wave_pattern
+    add $s6, $s7, $s6
+    
+    add $s7, $t0, $t6       # X absoluto
+    andi $s7, $s7, 0x1F
+    add $s6, $s6, $s7
+    lb $s6, 0($s6)
+    
+    sll $s6, $s6, 2
+    add $s6, $s4, $s6
+    lw $s5, 0($s6)
+    
+draw_final_ship_pixel:
+    # Calcular offset en display
+    add $s6, $t1, $t4       # Y total
+    sll $s6, $s6, 6         # * 64
+    add $s6, $s6, $t0       # + X base
+    add $s6, $s6, $t6       # + X offset
+    sll $s6, $s6, 2         # * 4
+    add $s6, $gp, $s6
+    
+    sw $s5, 0($s6)
+    
+skip_final_ship_pixel:
+    addi $t6, $t6, 1
+    j draw_final_ship_x
+
+draw_final_ship_next_y:
+    addi $t4, $t4, 1
+    j draw_final_ship_y
+
+draw_final_ship_done:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
 get_background_color:
     addi $sp, $sp, -24
     sw $ra, 0($sp)
@@ -2387,11 +2681,55 @@ get_background_color:
     move $s0, $a0           # x
     move $s1, $a1           # y
     
-    # Verificar si portaaviones está visible
+    # PRIMERO: Verificar si barco final está activo
+    lw $t0, final_ship_active
+    beqz $t0, check_initial_carrier
+    
+    # Verificar si el punto está dentro del área del barco final
+    li $t1, 16              # final_ship_x
+    lw $t2, final_ship_y_offset  # final_ship_y DINÁMICO
+    li $t3, 32              # final_ship_width
+    lw $t4, CARRIER_HEIGHT  # final_ship_height
+    
+    # Verificar X: x >= final_ship_x && x < final_ship_x + width
+    blt $s0, $t1, check_initial_carrier
+    add $t5, $t1, $t3
+    bge $s0, $t5, check_initial_carrier
+    
+    # Verificar Y: y >= final_ship_y && y < final_ship_y + height
+    blt $s1, $t2, check_initial_carrier
+    add $t5, $t2, $t4
+    bge $s1, $t5, check_initial_carrier
+    
+    # Está sobre el barco final - obtener color del sprite
+    sub $t5, $s0, $t1       # offset_x
+    sub $t6, $s1, $t2       # offset_y
+    
+    # Calcular índice en sprite (offset_y * 32 + offset_x)
+    sll $t7, $t6, 5         # offset_y * 32
+    add $t7, $t7, $t5       # + offset_x
+    la $t8, carrier_sprite
+    add $t8, $t8, $t7
+    lb $t8, 0($t8)          # Valor del pixel
+    
+    # Si es 0, es mar
+    beqz $t8, get_bg_sea
+    
+    # Seleccionar color según valor
+    li $t9, 1
+    beq $t8, $t9, get_bg_carrier_gray
+    li $t9, 2
+    beq $t8, $t9, get_bg_carrier_light
+    li $t9, 3
+    beq $t8, $t9, get_bg_carrier_black
+    j get_bg_sea
+
+check_initial_carrier:
+    # SEGUNDO: Verificar si portaaviones inicial está visible
     lw $t0, carrier_visible
     beqz $t0, get_bg_sea
     
-    # Verificar si el punto está dentro del área del portaaviones
+    # Verificar si el punto está dentro del área del portaaviones inicial
     li $t1, 16              # carrier_x
     lw $t2, carrier_y_offset  # carrier_y DINÁMICO
     li $t3, 32              # carrier_width
@@ -2407,7 +2745,7 @@ get_background_color:
     add $t5, $t2, $t4
     bge $s1, $t5, get_bg_sea
     
-    # Está sobre el portaaviones - obtener color del sprite
+    # Está sobre el portaaviones inicial - obtener color del sprite
     sub $t5, $s0, $t1       # offset_x
     sub $t6, $s1, $t2       # offset_y
     

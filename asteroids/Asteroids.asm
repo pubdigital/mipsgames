@@ -7,11 +7,12 @@
     verde: .word 0x0000FF00
     blanco: .word 0x00FFFFFF
     amarillo: .word 0x00FFFF00
+    naranja: .word 0x00FF8800    # Nuevo color para meteoritos medianos
     
     nave_x: .word 31
     nave_y: .word 50
     
-    asteroides: .space 400      # 20 asteroides * 20 bytes (x, y, dx, dy, tipo)
+    asteroides: .space 400      # 20 asteroides * 20 bytes (x, y, dx, dy, tipo, velocidad)
     num_ast: .word 0
     frames: .word 0
     seed: .word 12345
@@ -95,7 +96,7 @@ pixel_back_fin:
     jr $ra
 
 # ==========================================
-# DIBUJAR METEORITO GRANDE
+# DIBUJAR METEORITO GRANDE (4x4)
 # ==========================================
 dibujar_meteorito_grande_back:
     # $a0 = x, $a1 = y, $a2 = color
@@ -160,6 +161,40 @@ dibujar_meteorito_grande_back:
     lw $s0, 8($sp)
     lw $ra, 12($sp)
     addiu $sp, $sp, 16
+    jr $ra
+
+# ==========================================
+# DIBUJAR METEORITO MEDIANO (2x2)
+# ==========================================
+dibujar_meteorito_mediano_back:
+    # $a0 = x, $a1 = y, $a2 = color
+    addiu $sp, $sp, -12
+    sw $ra, 8($sp)
+    sw $s0, 4($sp)
+    sw $s1, 0($sp)
+    
+    move $s0, $a0  # Guardar posición base x
+    move $s1, $a1  # Guardar posición base y
+    
+    # Patrón 2x2 del meteorito mediano
+    # Fila 0: X X
+    move $a0, $s0
+    move $a1, $s1
+    jal pixel_back
+    addiu $a0, $s0, 1
+    jal pixel_back
+    
+    # Fila 1: X X
+    addiu $a1, $s1, 1
+    move $a0, $s0
+    jal pixel_back
+    addiu $a0, $s0, 1
+    jal pixel_back
+    
+    lw $s1, 0($sp)
+    lw $s0, 4($sp)
+    lw $ra, 8($sp)
+    addiu $sp, $sp, 12
     jr $ra
 
 # ==========================================
@@ -320,22 +355,31 @@ dibujar_ast_back_loop:
     lw $t0, num_ast
     bge $s0, $t0, dibujar_ast_back_done
     
-    # Cada asteroide usa 20 bytes: x, y, dx, dy, tipo
-    mul $t2, $s0, 20
+    # Cada asteroide usa 24 bytes: x, y, dx, dy, tipo, velocidad
+    mul $t2, $s0, 24
     addu $t3, $t7, $t2
     
     lw $a0, 0($t3)    # x
     lw $a1, 4($t3)    # y
-    lw $t4, 16($t3)   # tipo (0=pequeño, 1=grande)
+    lw $t4, 16($t3)   # tipo (0=pequeño, 1=grande, 2=mediano)
     
     beqz $t4, dibujar_ast_pequeno_back
+    li $t5, 1
+    beq $t4, $t5, dibujar_ast_grande_back
     
-    # Dibujar asteroide grande
+    # Dibujar asteroide mediano (2x2)
+    lw $a2, naranja
+    jal dibujar_meteorito_mediano_back
+    j siguiente_ast_back
+    
+dibujar_ast_grande_back:
+    # Dibujar asteroide grande (4x4)
     lw $a2, amarillo
     jal dibujar_meteorito_grande_back
     j siguiente_ast_back
     
 dibujar_ast_pequeno_back:
+    # Dibujar asteroide pequeño (1x1)
     lw $a2, rojo
     jal pixel_back
 
@@ -371,16 +415,18 @@ verificar_colisiones:
 colisiones_loop:
     bge $t3, $t0, colisiones_fin
     
-    # Cada asteroide usa 20 bytes
-    mul $t5, $t3, 20
+    # Cada asteroide usa 24 bytes
+    mul $t5, $t3, 24
     addu $t6, $t4, $t5
     
     lw $t7, 0($t6)    # x
     lw $t8, 4($t6)    # y
-    lw $s5, 16($t6)   # tipo
+    lw $s5, 16($t6)   # tipo (0=pequeño, 1=grande, 2=mediano)
     
     beqz $s5, colision_pequena
-    j colision_grande
+    li $s6, 1
+    beq $s5, $s6, colision_grande
+    j colision_mediana
 
 colision_pequena:
     # Colisión con meteorito pequeño (1x1)
@@ -390,7 +436,21 @@ colision_pequena:
     blt $t8, $t2, siguiente_colision
     addiu $t9, $t2, 1
     bgt $t8, $t9, siguiente_colision
+    j colision_detectada
+
+colision_mediana:
+    # Colisión con meteorito mediano (2x2)
+    addiu $s0, $t7, 1    # x + 1 (ancho del meteorito mediano)
+    addiu $s1, $t8, 1    # y + 1 (alto del meteorito mediano)
     
+    addiu $s2, $t1, 1    # x_nave + 1 (ancho de la nave)
+    addiu $s3, $t2, 1    # y_nave + 1 (alto de la nave)
+    
+    # Verificar solapamiento
+    bgt $t1, $s0, siguiente_colision    # nave_x > meteorito_x+1
+    bgt $t7, $s2, siguiente_colision    # meteorito_x > nave_x+1
+    bgt $t2, $s1, siguiente_colision    # nave_y > meteorito_y+1
+    bgt $t8, $s3, siguiente_colision    # meteorito_y > nave_y+1
     j colision_detectada
 
 colision_grande:
@@ -467,20 +527,21 @@ crear_asteroide:
     addiu $t0, $t0, 1
     sw $t0, frames
     
-    li $t1, 15  # Reducido para más asteroides
+    li $t1, 15
     blt $t0, $t1, crear_fin
     
     sw $zero, frames
     
     lw $t0, num_ast
-    li $t1, 15  # Aumentado el máximo de asteroides
+    li $t1, 15
     bge $t0, $t1, crear_fin
     
-    addiu $sp, $sp, -16
-    sw $ra, 12($sp)
-    sw $s0, 8($sp)
-    sw $s1, 4($sp)
-    sw $s2, 0($sp)
+    addiu $sp, $sp, -20
+    sw $ra, 16($sp)
+    sw $s0, 12($sp)
+    sw $s1, 8($sp)
+    sw $s2, 4($sp)
+    sw $s3, 0($sp)
     
     jal rand
     move $s1, $v0      # Guardar valor random
@@ -490,18 +551,35 @@ crear_asteroide:
     li $t1, 3
     beq $t0, $t1, crear_fin_pop  # 25% de no crear asteroide
     
-    # Decidir tipo de asteroide (25% grandes)
+    # Decidir tipo de asteroide (33% pequeños, 33% medianos, 33% grandes)
     srl $s2, $s1, 8
     andi $s2, $s2, 0xFF
-    li $t9, 64  # 25% probabilidad
-    blt $s2, $t9, asteroide_grande
     
-    # Asteroide pequeño
-    li $s0, 0
-    j decidir_direccion
+    # 0-85: pequeño, 86-170: mediano, 171-255: grande
+    li $t9, 86
+    blt $s2, $t9, asteroide_pequeno
+    li $t9, 171
+    blt $s2, $t9, asteroide_mediano
     
-asteroide_grande:
+    # Asteroide grande
     li $s0, 1
+    j decidir_velocidad
+    
+asteroide_pequeno:
+    li $s0, 0
+    j decidir_velocidad
+    
+asteroide_mediano:
+    li $s0, 2
+
+decidir_velocidad:
+    # Velocidad aleatoria entre 1 y 3
+    srl $s3, $s1, 4
+    andi $s3, $s3, 0x3  # 0-3
+    addiu $s3, $s3, 1    # 1-4
+    li $t9, 4
+    blt $s3, $t9, decidir_direccion
+    li $s3, 3           # Si es 4, convertirlo a 3
 
 decidir_direccion:
     # Usar otro bit aleatorio para dirección
@@ -523,77 +601,134 @@ decidir_direccion:
 desde_arriba:
     # Posición X aleatoria, Y = 0
     andi $t4, $s1, 63
-    # Ajustar para meteoritos grandes
+    # Ajustar según el tamaño del meteorito
     beqz $s0, desde_arriba_pequeno
+    li $t5, 2
+    beq $s0, $t5, desde_arriba_mediano
+    
     # Para grandes, evitar bordes
-    blt $t4, 2, ajustar_arriba_min
-    bgt $t4, 59, ajustar_arriba_max
+    blt $t4, 2, ajustar_arriba_grande_min
+    bgt $t4, 59, ajustar_arriba_grande_max
     j desde_arriba_continuar
     
-ajustar_arriba_min:
-    li $t4, 2
+desde_arriba_mediano:
+    # Para medianos, evitar bordes
+    blt $t4, 1, ajustar_arriba_mediano_min
+    bgt $t4, 61, ajustar_arriba_mediano_max
     j desde_arriba_continuar
-    
-ajustar_arriba_max:
-    li $t4, 59
     
 desde_arriba_pequeno:
     # Para pequeños, cualquier posición está bien
+    j desde_arriba_continuar
+
+ajustar_arriba_grande_min:
+    li $t4, 2
+    j desde_arriba_continuar
+    
+ajustar_arriba_grande_max:
+    li $t4, 59
+    j desde_arriba_continuar
+    
+ajustar_arriba_mediano_min:
+    li $t4, 1
+    j desde_arriba_continuar
+    
+ajustar_arriba_mediano_max:
+    li $t4, 61
+    
 desde_arriba_continuar:
     li $t5, 0          # y = 0
     li $t6, 0          # dx = 0
     li $t7, 1          # dy = 1 (hacia abajo)
-    j guardar_ast
+    j aplicar_velocidad
 
 desde_izquierda:
     # X = 0, posición Y aleatoria
     andi $t5, $s1, 63
-    # Ajustar para meteoritos grandes
+    # Ajustar según el tamaño del meteorito
     beqz $s0, desde_izquierda_pequeno
+    li $t8, 2
+    beq $s0, $t8, desde_izquierda_mediano
+    
     # Para grandes, evitar bordes
-    blt $t5, 2, ajustar_izquierda_min
-    bgt $t5, 59, ajustar_izquierda_max
+    blt $t5, 2, ajustar_izquierda_grande_min
+    bgt $t5, 59, ajustar_izquierda_grande_max
     j desde_izquierda_continuar
     
-ajustar_izquierda_min:
-    li $t5, 2
+desde_izquierda_mediano:
+    # Para medianos, evitar bordes
+    blt $t5, 1, ajustar_izquierda_mediano_min
+    bgt $t5, 61, ajustar_izquierda_mediano_max
     j desde_izquierda_continuar
-    
-ajustar_izquierda_max:
-    li $t5, 59
     
 desde_izquierda_pequeno:
     # Para pequeños, cualquier posición está bien
+    j desde_izquierda_continuar
+
+ajustar_izquierda_grande_min:
+    li $t5, 2
+    j desde_izquierda_continuar
+    
+ajustar_izquierda_grande_max:
+    li $t5, 59
+    j desde_izquierda_continuar
+    
+ajustar_izquierda_mediano_min:
+    li $t5, 1
+    j desde_izquierda_continuar
+    
+ajustar_izquierda_mediano_max:
+    li $t5, 61
+    
 desde_izquierda_continuar:
     li $t4, 0          # x = 0
     li $t6, 1          # dx = 1 (hacia derecha)
     li $t7, 0          # dy = 0
-    j guardar_ast
+    j aplicar_velocidad
 
 desde_derecha:
     # X = 63, posición Y aleatoria
     andi $t5, $s1, 63
-    # Ajustar para meteoritos grandes
+    # Ajustar según el tamaño del meteorito
     beqz $s0, desde_derecha_pequeno
+    li $t8, 2
+    beq $s0, $t8, desde_derecha_mediano
+    
     # Para grandes, evitar bordes
-    blt $t5, 2, ajustar_derecha_min
-    bgt $t5, 59, ajustar_derecha_max
+    blt $t5, 2, ajustar_derecha_grande_min
+    bgt $t5, 59, ajustar_derecha_grande_max
     j desde_derecha_continuar
     
-ajustar_derecha_min:
-    li $t5, 2
+desde_derecha_mediano:
+    # Para medianos, evitar bordes
+    blt $t5, 1, ajustar_derecha_mediano_min
+    bgt $t5, 61, ajustar_derecha_mediano_max
     j desde_derecha_continuar
-    
-ajustar_derecha_max:
-    li $t5, 59
     
 desde_derecha_pequeno:
     # Para pequeños, cualquier posición está bien
+    j desde_derecha_continuar
+
+ajustar_derecha_grande_min:
+    li $t5, 2
+    j desde_derecha_continuar
+    
+ajustar_derecha_grande_max:
+    li $t5, 59
+    j desde_derecha_continuar
+    
+ajustar_derecha_mediano_min:
+    li $t5, 1
+    j desde_derecha_continuar
+    
+ajustar_derecha_mediano_max:
+    li $t5, 61
+    
 desde_derecha_continuar:
     li $t4, 63         # x = 63
     li $t6, -1         # dx = -1 (hacia izquierda)
     li $t7, 0          # dy = 0
-    j guardar_ast
+    j aplicar_velocidad
 
 desde_diagonal:
     # Decidir dirección diagonal
@@ -616,24 +751,48 @@ diagonal_abajo_derecha:
     li $t7, 1          # dy = 1
 
 diagonal_ajustar:
-    # Ajustar para meteoritos grandes
-    beqz $s0, guardar_ast
+    # Ajustar según el tamaño del meteorito
+    beqz $s0, aplicar_velocidad
+    li $t8, 2
+    beq $s0, $t8, diagonal_ajustar_mediano
+    
     # Para grandes en diagonal, ajustar posición Y
-    blt $t5, 2, ajustar_diagonal_min
-    bgt $t5, 59, ajustar_diagonal_max
-    j guardar_ast
+    blt $t5, 2, ajustar_diagonal_grande_min
+    bgt $t5, 59, ajustar_diagonal_grande_max
+    j aplicar_velocidad
     
-ajustar_diagonal_min:
+diagonal_ajustar_mediano:
+    # Para medianos en diagonal, ajustar posición Y
+    blt $t5, 1, ajustar_diagonal_mediano_min
+    bgt $t5, 61, ajustar_diagonal_mediano_max
+    j aplicar_velocidad
+    
+ajustar_diagonal_grande_min:
     li $t5, 2
-    j guardar_ast
+    j aplicar_velocidad
     
-ajustar_diagonal_max:
+ajustar_diagonal_grande_max:
     li $t5, 59
+    j aplicar_velocidad
+    
+ajustar_diagonal_mediano_min:
+    li $t5, 1
+    j aplicar_velocidad
+    
+ajustar_diagonal_mediano_max:
+    li $t5, 61
+
+aplicar_velocidad:
+    # Aplicar velocidad a dx y dy
+    mult $t6, $s3
+    mflo $t6
+    mult $t7, $s3
+    mflo $t7
 
 guardar_ast:
     lw $t9, num_ast
-    # Cada asteroide usa 20 bytes: x, y, dx, dy, tipo
-    mul $t2, $t9, 20
+    # Cada asteroide usa 24 bytes: x, y, dx, dy, tipo, velocidad
+    mul $t2, $t9, 24
     la $t3, asteroides
     addu $t3, $t3, $t2
     
@@ -641,18 +800,20 @@ guardar_ast:
     sw $t5, 4($t3)   # y
     sw $t6, 8($t3)   # dx
     sw $t7, 12($t3)  # dy
-    sw $s0, 16($t3)  # tipo (0=pequeño, 1=grande)
+    sw $s0, 16($t3)  # tipo (0=pequeño, 1=grande, 2=mediano)
+    sw $s3, 20($t3)  # velocidad
     
     addiu $t9, $t9, 1
     sw $t9, num_ast
 
 crear_fin_pop:
     # Restaurar registros
-    lw $s2, 0($sp)
-    lw $s1, 4($sp)
-    lw $s0, 8($sp)
-    lw $ra, 12($sp)
-    addiu $sp, $sp, 16
+    lw $s3, 0($sp)
+    lw $s2, 4($sp)
+    lw $s1, 8($sp)
+    lw $s0, 12($sp)
+    lw $ra, 16($sp)
+    addiu $sp, $sp, 20
 
 crear_fin:
     jr $ra
@@ -717,8 +878,8 @@ mover_asteroides:
 mover_loop:
     bge $t1, $t0, mover_fin
     
-    # Cada asteroide usa 20 bytes
-    mul $t2, $t1, 20
+    # Cada asteroide usa 24 bytes
+    mul $t2, $t1, 24
     addu $t3, $t7, $t2
     
     lw $t4, 0($t3)   # x
@@ -726,7 +887,7 @@ mover_loop:
     lw $t6, 8($t3)   # dx
     lw $t8, 12($t3)  # dy
     
-    # Mover según dirección
+    # Mover según dirección y velocidad (ya aplicada en dx/dy)
     addu $t4, $t4, $t6
     addu $t5, $t5, $t8
     
@@ -752,7 +913,7 @@ borrar_ast:
     beq $t1, $t0, mover_fin
     
     # Copiar el último asteroide a la posición actual
-    mul $t9, $t0, 20
+    mul $t9, $t0, 24
     addu $s0, $t7, $t9
     
     lw $s1, 0($s0)   # x
@@ -760,12 +921,14 @@ borrar_ast:
     lw $s3, 8($s0)   # dx
     lw $s4, 12($s0)  # dy
     lw $s5, 16($s0)  # tipo
+    lw $s6, 20($s0)  # velocidad
     
     sw $s1, 0($t3)
     sw $s2, 4($t3)
     sw $s3, 8($t3)
     sw $s4, 12($t3)
     sw $s5, 16($t3)
+    sw $s6, 20($t3)
     
     j mover_loop
 
@@ -773,7 +936,7 @@ mover_fin:
     jr $ra
 
 esperar:
-    li $t0, 8000  # Reducido para mejor fluidez con más asteroides
+    li $t0, 8000
 esperar_loop:
     addiu $t0, $t0, -1
     bnez $t0, esperar_loop

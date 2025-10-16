@@ -52,11 +52,9 @@ Esta configuración crea una pantalla virtual de **64x64 píxeles** donde se ren
   - Desarrollo del sistema de colisiones y detección de impactos.
   - Sistema de vidas y puntuación.
 
-- **María del Pilar Castro – Programador de Sistemas Avanzados**  
-  - Implementación del sistema de enemigos (spawn, movimiento, tipos).
-  - Desarrollo del Boss Final y mecánicas especiales.
-  - Sistema de scroll del mar y portaaviones.
-  - Manejo de eventos de victoria y game over.
+- **María del Pilar Castro – Programador de Sonido y Eventos**  
+  - Implementación de música de fondo y efectos de sonido.  
+  - Manejo de eventos especiales (game over, power-ups, pantalla de inicio/fin).
 
 - **Valentino Luchini – Tester y Optimizador**  
   - Pruebas exhaustivas en cada versión.

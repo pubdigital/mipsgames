@@ -958,59 +958,122 @@ endHearts:
     
 # Dibuja el score en pantalla (esquina superior izquierda)
 drawScore:
-    addi $sp, $sp, -4
+    addi $sp, $sp, -28
     sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    sw $s4, 20($sp)
+    sw $s5, 24($sp)
     
-    lw $t0, score
-    li $t1, 10
-    li $t2, 8           # X inicial
-    li $t3, 8           # Y inicial
-    li $t9, 0           # Contador de dígitos
+    lw $s0, score       # s0 = score original
+    li $s2, 8           # s2 = X base
+    li $s3, 8           # s3 = Y
     
-    # Si score es 0, dibujar un 0
-    beqz $t0, drawZero
+    # Si score es 0, dibujar solo un 0
+    beqz $s0, drawSingleZero
     
-    # Contar dígitos y extraer
-    move $t4, $t0
-countDigits:
-    beqz $t4, drawDigits
-    divu $t4, $t1
-    mflo $t4
-    addi $t9, $t9, 1
-    j countDigits
+    # Extraer dígitos en un array temporal (máximo 8 dígitos)
+    move $s1, $s0       # s1 = número temporal
+    li $s4, 0           # s4 = cantidad de dígitos
+    addi $sp, $sp, -32  # espacio para 8 dígitos
     
-drawDigits:
-    # Calcular posición X final
-    move $t5, $t9
-    sll $t5, $t5, 2     # * 4 pixeles por dígito
-    add $t5, $t2, $t5
+extractLoop:
+    beqz $s1, printDigits
     
-drawDigitLoop:
-    beqz $t9, endDrawScore
+    # Extraer último dígito
+    li $t0, 10
+    divu $s1, $t0
+    mfhi $t1            # t1 = dígito (resto)
+    mflo $s1            # s1 = número / 10
     
-    divu $t0, $t1
-    mfhi $t6            # Dígito actual
-    mflo $t0            # Resto
+    # Guardar dígito en stack
+    sll $t2, $s4, 2     # offset = contador * 4
+    add $t2, $t2, $sp
+    sw $t1, 0($t2)
+    
+    addi $s4, $s4, 1
+    j extractLoop
+    
+printDigits:
+    # Ahora imprimir del último al primero (del más significativo al menos)
+    li $s5, 0           # índice actual
+    
+printLoop:
+    bge $s5, $s4, finishPrint
+    
+    # Calcular índice inverso
+    sub $t0, $s4, $s5
+    addi $t0, $t0, -1
+    
+    # Obtener dígito del stack
+    sll $t0, $t0, 2
+    add $t0, $t0, $sp
+    lw $a2, 0($t0)
+    
+    # Dibujar dígito
+    move $a0, $s2
+    move $a1, $s3
+    jal drawDigit
+    
+    # Siguiente posición X
+    addi $s2, $s2, 4
+    addi $s5, $s5, 1
+    j printLoop
+    
+finishPrint:
+    addi $sp, $sp, 32   # restaurar stack
+    j endDrawScore
+
+drawSingleZero:
+    move $a0, $s2
+    move $a1, $s3
+    li $a2, 0
+    jal drawDigit
+    
+endDrawScore:
+    lw $ra, 0($sp)
+    lw $s0, 4($sp)
+    lw $s1, 8($sp)
+    lw $s2, 12($sp)
+    lw $s3, 16($sp)
+    lw $s4, 20($sp)
+    lw $s5, 24($sp)
+    addi $sp, $sp, 28
+    jr $ra
+    
+drawFromStack:
+    beqz $s1, finishDraw
+    
+    # Recuperar dígito del stack
+    lw $a2, 0($sp)
+    addi $sp, $sp, 4
     
     # Dibujar dígito
     move $a0, $t5
-    move $a1, $t3
-    move $a2, $t6
+    move $a1, $s3
     jal drawDigit
     
-    addi $t5, $t5, -4   # Mover a la izquierda
-    addi $t9, $t9, -1
-    j drawDigitLoop
+    # Mover X a la derecha para el siguiente dígito
+    addi $t5, $t5, 4
+    addi $s1, $s1, -1
+    j drawFromStack
     
 drawZero:
     move $a0, $t2
     move $a1, $t3
     li $a2, 0
     jal drawDigit
-    
-endDrawScore:
+    j finishDraw
+
+finishDraw:
     lw $ra, 0($sp)
-    addi $sp, $sp, 4
+    lw $s0, 4($sp)
+    lw $s1, 8($sp)
+    lw $s2, 12($sp)
+    lw $s3, 16($sp)
+    addi $sp, $sp, 20
     jr $ra
 
 # Dibuja un dígito 3x5 simple

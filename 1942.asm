@@ -482,12 +482,6 @@ scroll_redraw:
     
     # Redibujar portaaviones si sigue visible
     jal draw_carrier
-    
-    # Redibujar todos los elementos (AGREGAR ESTAS 4 LÍNEAS)
-    jal draw_enemies
-    jal draw_bullets
-    jal draw_player_bullets
-    jal draw_player_new
 
 scroll_done:
     lw $ra, 0($sp)
@@ -2681,6 +2675,11 @@ get_background_color:
     move $s0, $a0           # x
     move $s1, $a1           # y
     
+    lw $t0, final_ship_active
+    lw $t1, carrier_visible
+    or $t2, $t0, $t1
+    beqz $t2, get_bg_sea    # Si ninguno visible, ir directo al mar
+    
     # PRIMERO: Verificar si barco final está activo
     lw $t0, final_ship_active
     beqz $t0, check_initial_carrier
@@ -3103,7 +3102,7 @@ no_input:
 
 # ===== DELAY =====
 delay:
-    li $t0, 80000
+    li $t0, 20000    
 delay_loop:
     addi $t0, $t0, -1
     bnez $t0, delay_loop

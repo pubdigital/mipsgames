@@ -1,4 +1,4 @@
-# Car Dodge Game - Sprite ROJO completo + movimiento adelante/atr·s
+# Car Dodge Game - Sprite ROJO completo + movimiento adelante/atr√°s
 # SETUP:
 #    Tools -> Bitmap Display:
 #    Unit Width: 4, Unit Height: 4
@@ -13,7 +13,7 @@
 # A - Izquierda
 # D - Derecha  
 # W - Adelante (acelerar)
-# S - Atr·s (frenar)
+# S - Atr√°s (frenar)
 # Q - Salir
 
 .data
@@ -34,9 +34,18 @@
     carY: .word 50        # Y del auto
     carSpeed: .word 0     # Velocidad del auto (0-3)
    
-    obsX: .word 28        # X del obst·culo
+    obsX: .word 28        # X del obst√°culo
     obsY: .word 0         # Y inicial
-    obsSpeed: .word 1     # Velocidad base del obst·culo
+    obsSpeed: .word 1     # Velocidad base del obst√°culo
+    
+    # Nuevos obst√°culos
+    obs2X: .word 28       # X del segundo obst√°culo (que ralentiza)
+    obs2Y: .word -30      # Y inicial del segundo obst√°culo
+    obs2Type: .word 2     # Tipo 2 = obst√°culo que ralentiza
+    
+    obs3X: .word 28       # X del tercer obst√°culo (normal)
+    obs3Y: .word -60      # Y inicial del tercer obst√°culo
+    obs3Type: .word 1     # Tipo 1 = obst√°culo normal
    
     score: .word 0
     lives: .word 3
@@ -46,13 +55,17 @@
     minY: .word 10
     maxY: .word 58
     
-    lane0X: .word 13      # X del carril izquierdo (m·s a la izquierda)
+    lane0X: .word 13      # X del carril izquierdo (m√°s a la izquierda)
     lane1X: .word 32      # X del carril centro (centrado en pantalla)
-    lane2X: .word 51      # X del carril derecho (m·s a la derecha)
+    lane2X: .word 51      # X del carril derecho (m√°s a la derecha)
     
     obsLane0X: .word 5     # Carril izq: 13 (centro auto) - 8 (mitad cono) = 5
     obsLane1X: .word 24    # Carril centro: 32 - 8 = 24
     obsLane2X: .word 43    # Carril derecho: 51 - 8 = 43
+    
+    # Variables para efectos temporales
+    slowEffectTimer: .word 0  # Temporizador para efecto de ralentizaci√≥n
+    slowEffectDuration: .word 60  # Duraci√≥n del efecto en frames
 
 .text
 main:
@@ -85,12 +98,12 @@ borderLoop:
     li $t0, 1
     sw $t0, carLane
     
-    # Cargar posiciÛn correcta del carril centro
+    # Cargar posici√≥n correcta del carril centro
     lw $s1, lane1X
-    sw $s1, carX          # Actualizar carX tambiÈn
+    sw $s1, carX          # Actualizar carX tambi√©n
     
     lw $s2, carY
-    # Inicializar primer obst·culo en carril centro (centrado)
+    # Inicializar primer obst√°culo en carril centro (centrado)
     lw $s3, obsLane1X
     sw $s3, obsX
     lw $s4, obsY
@@ -102,22 +115,40 @@ loop:
     addi $t9, $t9, 1
     sw $t9, frameCounter
     
-    # Si randomSeed est· sin inicializar (0), inicializa con frameCounter
+    # Si randomSeed est√° sin inicializar (0), inicializa con frameCounter
     lw $t9, randomSeed
     bne $t9, 0, skipSeedInit
     lw $t9, frameCounter
     sw $t9, randomSeed
 skipSeedInit:
+    
+    # Actualizar efecto de ralentizaci√≥n
+    lw $t0, slowEffectTimer
+    beqz $t0, noSlowEffect
+    addi $t0, $t0, -1
+    sw $t0, slowEffectTimer
+noSlowEffect:
+
     # === FASE 1: CALCULAR (sin dibujar nada) ===
-    # Mover obst·culo
+    # Mover obst√°culo 1
     lw $t8, carSpeed
     addi $t8, $t8, 2
     add $s4, $s4, $t8
     sw $s4, obsY
     
-    # Reset obst·culo
+    # Mover obst√°culo 2 (que ralentiza)
+    lw $t0, obs2Y
+    add $t0, $t0, $t8
+    sw $t0, obs2Y
+    
+    # Mover obst√°culo 3 (normal)
+    lw $t1, obs3Y
+    add $t1, $t1, $t8
+    sw $t1, obs3Y
+    
+    # Reset obst√°culo 1
     li $t0, 128
-    blt $s4, $t0, skipReset
+    blt $s4, $t0, skipReset1
     
     li $s4, -8
     sw $s4, obsY
@@ -126,7 +157,7 @@ skipSeedInit:
     addi $t0, $t0, 1
     sw $t0, score
     
-    # Mezclar semilla con frameCounter y posiciÛn Y para m·s aleatoriedad
+    # Mezclar semilla con frameCounter y posici√≥n Y para m√°s aleatoriedad
     lw $t8, randomSeed
     lw $t9, frameCounter
     xor $t8, $t8, $t9
@@ -153,48 +184,111 @@ skipSeedInit:
     beq $t1, 1, setXLeft
     beq $t1, 2, setXRight
     
-    # Elegir tipo aleatorio de obst·culo (0 = cono, 1 = piedra)
-    li $a0, 2
-    jal getRandom
-    sw $v0, obsType
-
-    # Elegir carril aleatorio (0 = izq, 1 = centro, 2 = derecha)
-    li $a0, 3
-    jal getRandom
-    move $t1, $v0
-
-    beq $t1, 0, setXFarLeft
-    beq $t1, 1, setXLeft
-    beq $t1, 2, setXRight
-    li $s3, 43
-    sw $s3, obsX
-    j skipReset
+    j skipReset1
 
 setXFarLeft:
     lw $s3, obsLane0X
     sw $s3, obsX
-    j skipReset
+    j skipReset1
     
 setXLeft:
     lw $s3, obsLane1X
     sw $s3, obsX
-    j skipReset
+    j skipReset1
     
 setXRight:
     lw $s3, obsLane2X
     sw $s3, obsX
 
-skipReset:
-    # === FASE 2: DIBUJAR TODO DE UN TIR”N ===
+skipReset1:
+    # Reset obst√°culo 2
+    lw $t0, obs2Y
+    li $t1, 128
+    blt $t0, $t1, skipReset2
+    
+    li $t0, -30
+    sw $t0, obs2Y
+    
+    # Elegir carril aleatorio para obst√°culo 2
+    li $a0, 3
+    jal getRandom
+    move $t1, $v0
+    
+    beq $t1, 0, setXFarLeft2
+    beq $t1, 1, setXLeft2
+    beq $t1, 2, setXRight2
+    j skipReset2
+
+setXFarLeft2:
+    lw $t0, obsLane0X
+    sw $t0, obs2X
+    j skipReset2
+    
+setXLeft2:
+    lw $t0, obsLane1X
+    sw $t0, obs2X
+    j skipReset2
+    
+setXRight2:
+    lw $t0, obsLane2X
+    sw $t0, obs2X
+
+skipReset2:
+    # Reset obst√°culo 3
+    lw $t0, obs3Y
+    li $t1, 128
+    blt $t0, $t1, skipReset3
+    
+    li $t0, -60
+    sw $t0, obs3Y
+    
+    # Elegir carril aleatorio para obst√°culo 3
+    li $a0, 3
+    jal getRandom
+    move $t1, $v0
+    
+    beq $t1, 0, setXFarLeft3
+    beq $t1, 1, setXLeft3
+    beq $t1, 2, setXRight3
+    j skipReset3
+
+setXFarLeft3:
+    lw $t0, obsLane0X
+    sw $t0, obs3X
+    j skipReset3
+    
+setXLeft3:
+    lw $t0, obsLane1X
+    sw $t0, obs3X
+    j skipReset3
+    
+setXRight3:
+    lw $t0, obsLane2X
+    sw $t0, obs3X
+
+skipReset3:
+    # === FASE 2: DIBUJAR TODO DE UN TIR√ìN ===
     jal updateScroll
     jal drawTrack         # Dibuja fondo
     
-    # Dibujar obst·culo PRIMERO
+    # Dibujar obst√°culos PRIMERO
     move $a0, $s3
     move $a1, $s4
     jal drawObstacle
     
-    # Dibujar auto DESPU…S (queda arriba)
+    # Dibujar obst√°culo 2 (que ralentiza)
+    lw $a0, obs2X
+    lw $a1, obs2Y
+    li $a2, 2            # Tipo 2 = obst√°culo que ralentiza
+    jal drawSpecialObstacle
+    
+    # Dibujar obst√°culo 3 (normal)
+    lw $a0, obs3X
+    lw $a1, obs3Y
+    li $a2, 1            # Tipo 1 = obst√°culo normal
+    jal drawSpecialObstacle
+    
+    # Dibujar auto DESPU√âS (queda arriba)
     move $a0, $s1
     move $a1, $s2
     jal drawCarSprite32
@@ -203,6 +297,12 @@ skipReset:
     jal drawHearts
     jal drawScore
     
+    # Mostrar efecto de ralentizaci√≥n si est√° activo
+    lw $t0, slowEffectTimer
+    beqz $t0, noSlowDisplay
+    jal drawSlowEffect
+noSlowDisplay:
+
     # === FASE 3: INPUT ===
     li $t0, 0xffff0000
     lw $t1, 0($t0)
@@ -221,8 +321,7 @@ skipReset:
     beq $t1, 'q', exit
     beq $t1, 'Q', exit
     j noKey
-    
-# (moveLeft, moveRight, etc. IGUAL que antes)
+
 moveLeft:
     lw $t2, carLane
     beqz $t2, noKey
@@ -287,9 +386,10 @@ moveDown:
 
 noKey:
     # === FASE 4: COLISIONES ===
-    bltz $s4, noCol
+    # Colisi√≥n con obst√°culo 1 (normal)
+    bltz $s4, noCol1
     li $t0, 128
-    bge $s4, $t0, noCol
+    bge $s4, $t0, noCol1
     
     move $t0, $s1
     addi $t0, $t0, -10
@@ -309,14 +409,14 @@ noKey:
     move $t7, $s4
     addi $t7, $t7, 14
     
-    bge $t0, $t5, noCol
-    ble $t1, $t4, noCol
-    bge $t2, $t7, noCol
-    ble $t3, $t6, noCol
+    bge $t0, $t5, noCol1
+    ble $t1, $t4, noCol1
+    bge $t2, $t7, noCol1
+    ble $t3, $t6, noCol1
     
-    j collision
+    j collision1
 
-collision:
+collision1:
     lw $t0, lives
     addi $t0, $t0, -1
     sw $t0, lives
@@ -341,7 +441,7 @@ collision:
     # Generar tipo aleatorio: 0 o 1
     li $a0, 2           # Rango: 0 a 1
     jal getRandom
-    sw $v0, obsType     # Guardar el resultado (ahora SÕ se usa)
+    sw $v0, obsType     # Guardar el resultado
     
     # Generar carril aleatorio: 0, 1 o 2
     li $a0, 3           # Rango: 0 a 2
@@ -351,25 +451,174 @@ collision:
     beq $t1, 0, collSetXFarLeft
     beq $t1, 1, collSetXLeft
     beq $t1, 2, collSetXRight
-    j noCol
+    j noCol1
 
 collSetXFarLeft:
     lw $s3, obsLane0X
     sw $s3, obsX
-    j noCol
+    j noCol1
     
 collSetXLeft:
     lw $s3, obsLane1X
     sw $s3, obsX
-    j noCol
+    j noCol1
     
 collSetXRight:
     lw $s3, obsLane2X
     sw $s3, obsX
-    j noCol
 
-noCol:
-    # Delay m·s agresivo
+noCol1:
+    # Colisi√≥n con obst√°culo 2 (que ralentiza)
+    lw $t0, obs2Y
+    bltz $t0, noCol2
+    li $t1, 128
+    bge $t0, $t1, noCol2
+    
+    move $t2, $s1
+    addi $t2, $t2, -10
+    move $t3, $s1
+    addi $t3, $t3, 10
+    move $t4, $s2
+    addi $t4, $t4, 5
+    move $t5, $s2
+    addi $t5, $t5, 27
+    
+    lw $t6, obs2X
+    addi $t6, $t6, 2
+    lw $t7, obs2X
+    addi $t7, $t7, 14
+    lw $t8, obs2Y
+    addi $t8, $t8, 2
+    lw $t9, obs2Y
+    addi $t9, $t9, 14
+    
+    bge $t2, $t7, noCol2
+    ble $t3, $t6, noCol2
+    bge $t4, $t9, noCol2
+    ble $t5, $t8, noCol2
+    
+    j collision2
+
+collision2:
+    # Aplicar efecto de ralentizaci√≥n
+    lw $t0, slowEffectDuration
+    sw $t0, slowEffectTimer
+    
+    # Reducir velocidad temporalmente
+    lw $t0, carSpeed
+    blez $t0, noSlowSpeed
+    addi $t0, $t0, -1
+    sw $t0, carSpeed
+noSlowSpeed:
+
+    # Reset obst√°culo 2
+    li $t0, -30
+    sw $t0, obs2Y
+    
+    # Generar carril aleatorio para obst√°culo 2
+    li $a0, 3
+    jal getRandom
+    move $t1, $v0
+    
+    beq $t1, 0, collSetXFarLeft2
+    beq $t1, 1, collSetXLeft2
+    beq $t1, 2, collSetXRight2
+    j noCol2
+
+collSetXFarLeft2:
+    lw $t0, obsLane0X
+    sw $t0, obs2X
+    j noCol2
+    
+collSetXLeft2:
+    lw $t0, obsLane1X
+    sw $t0, obs2X
+    j noCol2
+    
+collSetXRight2:
+    lw $t0, obsLane2X
+    sw $t0, obs2X
+
+noCol2:
+    # Colisi√≥n con obst√°culo 3 (normal)
+    lw $t0, obs3Y
+    bltz $t0, noCol3
+    li $t1, 128
+    bge $t0, $t1, noCol3
+    
+    move $t2, $s1
+    addi $t2, $t2, -10
+    move $t3, $s1
+    addi $t3, $t3, 10
+    move $t4, $s2
+    addi $t4, $t4, 5
+    move $t5, $s2
+    addi $t5, $t5, 27
+    
+    lw $t6, obs3X
+    addi $t6, $t6, 2
+    lw $t7, obs3X
+    addi $t7, $t7, 14
+    lw $t8, obs3Y
+    addi $t8, $t8, 2
+    lw $t9, obs3Y
+    addi $t9, $t9, 14
+    
+    bge $t2, $t7, noCol3
+    ble $t3, $t6, noCol3
+    bge $t4, $t9, noCol3
+    ble $t5, $t8, noCol3
+    
+    j collision3
+
+collision3:
+    lw $t0, lives
+    addi $t0, $t0, -1
+    sw $t0, lives
+    
+    li $v0, 4
+    la $a0, hitMsg
+    syscall
+    
+    li $v0, 1
+    move $a0, $t0
+    syscall
+    
+    li $v0, 4
+    la $a0, newlineMsg
+    syscall
+    
+    beqz $t0, exit
+    
+    li $t0, -60
+    sw $t0, obs3Y
+    
+    # Generar carril aleatorio para obst√°culo 3
+    li $a0, 3
+    jal getRandom
+    move $t1, $v0
+    
+    beq $t1, 0, collSetXFarLeft3
+    beq $t1, 1, collSetXLeft3
+    beq $t1, 2, collSetXRight3
+    j noCol3
+
+collSetXFarLeft3:
+    lw $t0, obsLane0X
+    sw $t0, obs3X
+    j noCol3
+    
+collSetXLeft3:
+    lw $t0, obsLane1X
+    sw $t0, obs3X
+    j noCol3
+    
+collSetXRight3:
+    lw $t0, obsLane2X
+    sw $t0, obs3X
+
+noCol3:
+    # Delay m√°s agresivo
     li $t0, 50000
 delayLoop:
     addi $t0, $t0, -1
@@ -383,6 +632,48 @@ exit:
     syscall
     li $v0, 10
     syscall
+
+# Funci√≥n para dibujar obst√°culos especiales (tipos 1 y 2)
+# $a0 = X, $a1 = Y, $a2 = tipo (1=normal, 2=ralentizador)
+drawSpecialObstacle:
+    addi $sp, $sp, -8
+    sw $ra, 0($sp)
+    sw $s6, 4($sp)
+   
+    move $s6, $a0        # Guardar X
+    move $s7, $a1        # Guardar Y
+    move $t0, $a2        # Guardar tipo
+    
+    beq $t0, 2, drawSlowObstacle
+    
+    # Dibujar obst√°culo normal (piedra)
+    move $a0, $s6
+    move $a1, $s7
+    la $a2, piedra_data
+    jal drawSprite16Scaled
+    j endDrawSpecialObstacle
+    
+drawSlowObstacle:
+    # Dibujar obst√°culo que ralentiza (color diferente)
+    move $a0, $s6
+    move $a1, $s7
+    la $a2, slow_obstacle_data
+    jal drawSprite16Scaled
+   
+endDrawSpecialObstacle:
+    lw $ra, 0($sp)
+    lw $s6, 4($sp)
+    addi $sp, $sp, 8
+    jr $ra
+
+# Funci√≥n para mostrar efecto de ralentizaci√≥n en pantalla
+drawSlowEffect:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
 
 fillScreen:
     move $t0, $a0
@@ -411,8 +702,8 @@ updateScroll:
     lw $t0, scrollOffset
     lw $t1, carSpeed
     
-    # Scroll m·s suave
-    addi $t0, $t0, 1        # Era 2, ahora 1 (m·s suave)
+    # Scroll m√°s suave
+    addi $t0, $t0, 1        # Era 2, ahora 1 (m√°s suave)
     
     # Agregar velocidad del auto
     add $t0, $t0, $t1
@@ -428,8 +719,6 @@ saveScroll:
     sw $t0, scrollOffset
     jr $ra
 
-
-# REEMPLAZA COMPLETAMENTE drawTrack con esta versiÛn:
 drawTrack:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
@@ -450,13 +739,12 @@ drawTrack:
     # Sprite 3: Abajo
     li $a0, 0
     move $a1, $t9
-    addi $a1, $a1, 64       # Sumar 64 para que estÈ abajo
+    addi $a1, $a1, 64       # Sumar 64 para que est√© abajo
     jal drawPista64Simple
     
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
-
 
 drawPista64Simple:
     addi $sp, $sp, -24
@@ -481,13 +769,13 @@ rowLoop:
     li $t0, 128
     bge $s4, $t0, endSprite
     
-    # Calcular direcciÛn base de la fila UNA SOLA VEZ
+    # Calcular direcci√≥n base de la fila UNA SOLA VEZ
     li $t2, 0x10008000
     move $t3, $s4
     sll $t3, $t3, 6         # Y * 64 (optimizado)
     add $t3, $t3, $s0
     sll $t3, $t3, 2
-    add $t2, $t2, $t3       # DirecciÛn base de la fila
+    add $t2, $t2, $t3       # Direcci√≥n base de la fila
     
     li $s5, 0               # columna
 
@@ -506,7 +794,7 @@ drawBlack:
 drawIt:
     # Dibujar directamente
     sw $t0, 0($t2)
-    addi $t2, $t2, 4        # Siguiente pÌxel
+    addi $t2, $t2, 4        # Siguiente p√≠xel
 
     addi $s2, $s2, 4
     addi $s5, $s5, 1
@@ -531,9 +819,7 @@ endSprite:
     lw $s4, 20($sp)
     addi $sp, $sp, 24
     jr $ra
-   
-# Dibujar auto ROJO completo (basado en tu sprite)
-# $a0 = x (centro), $a1 = y (arriba)
+
 drawCarRed:
     addi $sp, $sp, -8
     sw $ra, 0($sp)
@@ -618,7 +904,7 @@ drawBodyMain:
     addi $t8, $t8, -1
     bgtz $t8, drawBodyMain
    
-    # FILA 6: TransiciÛn (gris + rojo)
+    # FILA 6: Transici√≥n (gris + rojo)
     addi $a1, $s7, 6
     move $a0, $s6
     addi $a0, $a0, -3
@@ -740,9 +1026,9 @@ drawLowerSection:
     lw $s6, 4($sp)
     addi $sp, $sp, 8
     jr $ra
-   
+
 setPixel:
-    # Validar coordenadas ANTES de calcular direcciÛn
+    # Validar coordenadas ANTES de calcular direcci√≥n
     bltz $a0, skipSetPixel      # Si X < 0, skip
     li $t0, 64
     bge $a0, $t0, skipSetPixel  # Si X >= 64, skip
@@ -750,7 +1036,7 @@ setPixel:
     li $t0, 128
     bge $a1, $t0, skipSetPixel  # Si Y >= 128, skip
     
-    # Ahora sÌ, calcular direcciÛn (SEGURO)
+    # Ahora s√≠, calcular direcci√≥n (SEGURO)
     li $t0, 0x10008000
     move $t1, $a1
     sll $t1, $t1, 6         # Y * 64 (optimizado)
@@ -761,10 +1047,7 @@ setPixel:
 
 skipSetPixel:
     jr $ra
-   
-# Dibuja sprite de 32x32 del archivo animacion choque piedra.c
-# a0 = x (posiciÛn X)
-# a1 = y (posiciÛn Y)
+
 drawCarSprite32:
     addi $sp, $sp, -28
     sw $ra, 0($sp)
@@ -792,7 +1075,7 @@ loopX32:
     beqz $t7, skipPixel32 # si alpha=0, skip
     andi $t6, $t5, 0x00FFFFFF
    
-    # Calcular X del pÌxel
+    # Calcular X del p√≠xel
     add $t8, $s0, $s4
     
     # CLIPPING HORIZONTAL - AGREGAR ESTO
@@ -800,7 +1083,7 @@ loopX32:
     li $t9, 64
     bge $t8, $t9, skipPixel32    # Si X >= 64, skip
     
-    # Calcular Y del pÌxel
+    # Calcular Y del p√≠xel
     add $t9, $s1, $s3
     
     # CLIPPING VERTICAL
@@ -808,7 +1091,7 @@ loopX32:
     li $s2, 128
     bge $t9, $s2, skipPixel32    # Si Y >= 128, skip
     
-    # Calcular direcciÛn de pÌxel
+    # Calcular direcci√≥n de p√≠xel
     li $t7, 0x10008000
     mul $s2, $t9, 64             # Y * ancho
     add $s2, $s2, $t8            # + X
@@ -844,7 +1127,7 @@ drawObstacle:
     move $s6, $a0        # Guardar X
     move $s7, $a1        # Guardar Y
     
-    # Cargar tipo de obst·culo
+    # Cargar tipo de obst√°culo
     lw $t0, obsType
     beqz $t0, drawCono
     
@@ -867,10 +1150,6 @@ endDrawObstacle:
     addi $sp, $sp, 8
     jr $ra
 
-# Dibuja sprite 32x32 escalado a 16x16
-# $a0 = X (esquina superior izquierda)
-# $a1 = Y
-# $a2 = direcciÛn del sprite data
 drawSprite16Scaled:
     addi $sp, $sp, -32
     sw $ra, 0($sp)
@@ -892,24 +1171,24 @@ loopYScaled:
     li $s4, 0            # columna destino (0-15)
     
 loopXScaled:
-    # Calcular offset en sprite original (tomar cada 2 pÌxeles)
+    # Calcular offset en sprite original (tomar cada 2 p√≠xeles)
     move $t0, $s3
     sll $t0, $t0, 1      # fila_src = fila_dst * 2
     move $t1, $s4
     sll $t1, $t1, 1      # col_src = col_dst * 2
     
-    # Calcular Ìndice en array: (fila_src * 32 + col_src) * 4
+    # Calcular √≠ndice en array: (fila_src * 32 + col_src) * 4
     mul $t2, $t0, 32
     add $t2, $t2, $t1
     sll $t2, $t2, 2
     add $t3, $s2, $t2
     
-    lw $t5, 0($t3)       # Cargar pÌxel
+    lw $t5, 0($t3)       # Cargar p√≠xel
     srl $t7, $t5, 24     # Extraer alpha
     beqz $t7, skipPixelScaled
     andi $t6, $t5, 0x00FFFFFF
     
-    # Calcular posiciÛn destino
+    # Calcular posici√≥n destino
     add $t8, $s0, $s4    # X
     add $t9, $s1, $s3    # Y
     
@@ -949,25 +1228,23 @@ skipPixelScaled:
     addi $sp, $sp, 32
     jr $ra
 
-# Dibuja los corazones de vida
-# No recibe par·metros, lee directamente de 'lives'
 drawHearts:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     
     lw $t9, lives         # Cargar vidas actuales
     
-    # PosiciÛn base: abajo a la derecha
+    # Posici√≥n base: abajo a la derecha
     li $s6, 50            # X inicial (esquina derecha)
     li $s7, 120           # Y inicial (cerca del fondo)
     
     # Dibujar 3 corazones
-    li $t8, 0             # Contador de corazÛn
+    li $t8, 0             # Contador de coraz√≥n
     
 heartLoop:
     bge $t8, 3, endHearts # Si ya dibujamos 3, terminar
     
-    # Calcular X de este corazÛn (separados por 5 pÌxeles)
+    # Calcular X de este coraz√≥n (separados por 5 p√≠xeles)
     move $a0, $s6
     li $t7, 5
     mult $t8, $t7
@@ -977,19 +1254,19 @@ heartLoop:
     move $a1, $s7         # Y fija
     
     # Decidir color: rojo si vida activa, gris si perdida
-    slt $t7, $t8, $t9     # øt8 < vidas? ? rojo : gris
+    slt $t7, $t8, $t9     # ¬øt8 < vidas? ? rojo : gris
     beqz $t7, grayHeart
     
-    # CorazÛn ROJO (vida activa)
+    # Coraz√≥n ROJO (vida activa)
     li $a2, 0xFF0000
     j drawThisHeart
     
 grayHeart:
-    # CorazÛn GRIS (vida perdida)
+    # Coraz√≥n GRIS (vida perdida)
     li $a2, 0x444444
     
 drawThisHeart:
-    # Dibujar un corazÛn simple de 3x3
+    # Dibujar un coraz√≥n simple de 3x3
     # Fila 1: . X .
     addi $a0, $a0, 1
     jal setPixel
@@ -1008,7 +1285,7 @@ drawThisHeart:
     subi $a0, $a0, 1
     jal setPixel
     
-    # Siguiente corazÛn
+    # Siguiente coraz√≥n
     addi $t8, $t8, 1
     j heartLoop
     
@@ -1016,8 +1293,7 @@ endHearts:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
-    
-# Dibuja el score en pantalla (esquina superior izquierda)
+
 drawScore:
     addi $sp, $sp, -28
     sw $ra, 0($sp)
@@ -1035,21 +1311,21 @@ drawScore:
     # Si score es 0, dibujar solo un 0
     beqz $s0, drawSingleZero
     
-    # Extraer dÌgitos en un array temporal (m·ximo 8 dÌgitos)
-    move $s1, $s0       # s1 = n˙mero temporal
-    li $s4, 0           # s4 = cantidad de dÌgitos
-    addi $sp, $sp, -32  # espacio para 8 dÌgitos
+    # Extraer d√≠gitos en un array temporal (m√°ximo 8 d√≠gitos)
+    move $s1, $s0       # s1 = n√∫mero temporal
+    li $s4, 0           # s4 = cantidad de d√≠gitos
+    addi $sp, $sp, -32  # espacio para 8 d√≠gitos
     
 extractLoop:
     beqz $s1, printDigits
     
-    # Extraer ˙ltimo dÌgito
+    # Extraer √∫ltimo d√≠gito
     li $t0, 10
     divu $s1, $t0
-    mfhi $t1            # t1 = dÌgito (resto)
-    mflo $s1            # s1 = n˙mero / 10
+    mfhi $t1            # t1 = d√≠gito (resto)
+    mflo $s1            # s1 = n√∫mero / 10
     
-    # Guardar dÌgito en stack
+    # Guardar d√≠gito en stack
     sll $t2, $s4, 2     # offset = contador * 4
     add $t2, $t2, $sp
     sw $t1, 0($t2)
@@ -1058,27 +1334,27 @@ extractLoop:
     j extractLoop
     
 printDigits:
-    # Ahora imprimir del ˙ltimo al primero (del m·s significativo al menos)
-    li $s5, 0           # Ìndice actual
+    # Ahora imprimir del √∫ltimo al primero (del m√°s significativo al menos)
+    li $s5, 0           # √≠ndice actual
     
 printLoop:
     bge $s5, $s4, finishPrint
     
-    # Calcular Ìndice inverso
+    # Calcular √≠ndice inverso
     sub $t0, $s4, $s5
     addi $t0, $t0, -1
     
-    # Obtener dÌgito del stack
+    # Obtener d√≠gito del stack
     sll $t0, $t0, 2
     add $t0, $t0, $sp
     lw $a2, 0($t0)
     
-    # Dibujar dÌgito
+    # Dibujar d√≠gito
     move $a0, $s2
     move $a1, $s3
     jal drawDigit
     
-    # Siguiente posiciÛn X
+    # Siguiente posici√≥n X
     addi $s2, $s2, 4
     addi $s5, $s5, 1
     j printLoop
@@ -1103,49 +1379,14 @@ endDrawScore:
     lw $s5, 24($sp)
     addi $sp, $sp, 28
     jr $ra
-    
-drawFromStack:
-    beqz $s1, finishDraw
-    
-    # Recuperar dÌgito del stack
-    lw $a2, 0($sp)
-    addi $sp, $sp, 4
-    
-    # Dibujar dÌgito
-    move $a0, $t5
-    move $a1, $s3
-    jal drawDigit
-    
-    # Mover X a la derecha para el siguiente dÌgito
-    addi $t5, $t5, 4
-    addi $s1, $s1, -1
-    j drawFromStack
-    
-drawZero:
-    move $a0, $t2
-    move $a1, $t3
-    li $a2, 0
-    jal drawDigit
-    j finishDraw
 
-finishDraw:
-    lw $ra, 0($sp)
-    lw $s0, 4($sp)
-    lw $s1, 8($sp)
-    lw $s2, 12($sp)
-    lw $s3, 16($sp)
-    addi $sp, $sp, 20
-    jr $ra
-
-# Dibuja un dÌgito 3x5 simple
-# $a0 = X, $a1 = Y, $a2 = dÌgito (0-9)
 drawDigit:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     
     li $t7, 0xFFFF00    # Color amarillo
     
-    # Switch seg˙n dÌgito
+    # Switch seg√∫n d√≠gito
     beq $a2, 0, digit0
     beq $a2, 1, digit1
     beq $a2, 2, digit2
@@ -1448,14 +1689,12 @@ endDigit:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
-    
-# Genera n˙mero aleatorio simple (LCG)
-# Retorna en $v0 un n˙mero entre 0 y $a0-1
+
 getRandom:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
 
-    # Mezclar semilla con frameCounter y direcciÛn de stack
+    # Mezclar semilla con frameCounter y direcci√≥n de stack
     lw $t0, randomSeed
     lw $t1, frameCounter
     addu $t0, $t0, $t1         # addu evita overflow con signo
@@ -1473,7 +1712,7 @@ getRandom:
     srl $t4, $t0, 16
     xor $t0, $t0, $t4
 
-    # Tomar mÛdulo del rango pedido (0 .. $a0-1)
+    # Tomar m√≥dulo del rango pedido (0 .. $a0-1)
     divu $t0, $a0
     mfhi $v0
 
@@ -1488,9 +1727,35 @@ hitMsg: .asciiz "HIT! Lives: "
 exitMsg: .asciiz "\nBye!\n"
 
 scrollOffset: .word 0
+frameCounter: .word 0
+randomSeed: .word 0
+obsType: .word 0
 
-lineOffset: .word 0      # Offset para el scroll de lÌneas
+lineOffset: .word 0      # Offset para el scroll de l√≠neas
 lineSpeed: .word 1       # Velocidad de scroll
+
+# Sprite para obst√°culo que ralentiza (amarillo)
+slow_obstacle_data:
+    .word
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000
+
+# ... (aqu√≠ van los sprites originales: animacion_choque_piedra_data, pista64_data, cono_data, piedra_data)
+# Los sprites originales permanecen igual
 # Sprite 32x32 del auto rojo
 animacion_choque_piedra_data:
     .word
@@ -1664,7 +1929,3 @@ piedra_data:
     0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
     0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
     0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000
-
-obsType: .word 0        # 0 = cono, 1 = piedra
-randomSeed: .word 0 # Semilla para generador aleatorio
-frameCounter: .word 0

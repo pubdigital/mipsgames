@@ -1,4 +1,4 @@
-# Car Dodge Game - Sprite ROJO completo + movimiento adelante/atrás
+# Car Dodge Game - Sprite ROJO completo + movimiento adelante/atr?s
 # SETUP:
 #    Tools -> Bitmap Display:
 #    Unit Width: 4, Unit Height: 4
@@ -13,7 +13,7 @@
 # A - Izquierda
 # D - Derecha  
 # W - Adelante (acelerar)
-# S - Atrás (frenar)
+# S - Atr?s (frenar)
 # Q - Salir
 
 .data
@@ -34,9 +34,9 @@
     carY: .word 50        # Y del auto
     carSpeed: .word 0     # Velocidad del auto (0-3)
    
-    obsX: .word 28        # X del obstáculo
+    obsX: .word 28        # X del obst?culo
     obsY: .word 0         # Y inicial
-    obsSpeed: .word 1     # Velocidad base del obstáculo
+    obsSpeed: .word 1     # Velocidad base del obst?culo
    
     score: .word 0
     lives: .word 3
@@ -45,11 +45,11 @@
     maxX: .word 56
     minY: .word 10
     maxY: .word 58
-    
-    lane0X: .word 13      # X del carril izquierdo (más a la izquierda)
+   
+    lane0X: .word 13      # X del carril izquierdo (m?s a la izquierda)
     lane1X: .word 32      # X del carril centro (centrado en pantalla)
-    lane2X: .word 51      # X del carril derecho (más a la derecha)
-    
+    lane2X: .word 51      # X del carril derecho (m?s a la derecha)
+   
     obsLane0X: .word 5     # Carril izq: 13 (centro auto) - 8 (mitad cono) = 5
     obsLane1X: .word 24    # Carril centro: 32 - 8 = 24
     obsLane2X: .word 43    # Carril derecho: 51 - 8 = 43
@@ -57,12 +57,12 @@
 .text
 main:
     li $s0, 0x10008000
-    
+   
     # Dibujar fondo gris una sola vez
     li $a0, 0x10008000
     li $a1, 0x5d5d5d
     jal fillScreen
-    
+   
     # Dibujar bordes azules
     li $t0, 0
 borderLoop:
@@ -80,47 +80,117 @@ borderLoop:
     li $t1, 128
     blt $t0, $t1, borderLoop
     li $s0, 0x10008000
-    
+   
     # Inicializar carril en centro (carril 1)
     li $t0, 1
     sw $t0, carLane
-    
-    # Cargar posición correcta del carril centro
+   
+    # Cargar posici?n correcta del carril centro
     lw $s1, lane1X
-    sw $s1, carX          # Actualizar carX también
-    
+    sw $s1, carX          # Actualizar carX tambi?n
+   
     lw $s2, carY
-    # Inicializar primer obstáculo en carril centro (centrado)
+    # Inicializar primer obst?culo en carril centro (centrado)
     lw $s3, obsLane1X
     sw $s3, obsX
     lw $s4, obsY
     lw $s5, carSpeed
 
 loop:
-    # === FASE 1: CALCULAR (sin dibujar nada) ===
-    # Mover obstáculo
+    # Actualizar contador de frames para mejor aleatoriedad
+    lw $t9, frameCounter
+    addi $t9, $t9, 1
+    sw $t9, frameCounter
+   
+    # Si randomSeed está sin inicializar (0), inicializa con frameCounter
+    lw $t9, randomSeed
+    bne $t9, 0, skipSeedInit
+    lw $t9, frameCounter
+    sw $t9, randomSeed
+skipSeedInit:
+    # === VERIFICAR SLOWDOWN ACTIVO ===
+    lw $t9, slowdownActive
+    beqz $t9, continueNormal
+    
+    # Si hay slowdown, mantener velocidad máxima en 0
     lw $t8, carSpeed
+    blez $t8, continueNormal
+    li $t8, 0
+    sw $t8, carSpeed
+    move $s5, $t8
+    
+continueNormal:
+    # === FASE 1: CALCULAR (sin dibujar nada) ===
+    # Mover obstáculo considerando slowdown
+    lw $t8, carSpeed
+    
+normalSpeed:
+    lw $t9, slowdownActive
+    beqz $t9, addNormalSpeed
+    
+    # Con slowdown, el mundo se mueve más rápido (efecto relativo)
+    addi $t8, $t8, 3
+    j moveObstacle
+    
+addNormalSpeed:
     addi $t8, $t8, 2
+    
+moveObstacle:
     add $s4, $s4, $t8
     sw $s4, obsY
-    
+   
     # Reset obstáculo
     li $t0, 128
     blt $s4, $t0, skipReset
     
+    # Reset obst?culo
+    li $t0, 128
+    blt $s4, $t0, skipReset
+   
     li $s4, -8
     sw $s4, obsY
-    
+   
     lw $t0, score
     addi $t0, $t0, 1
     sw $t0, score
-    
-    # Cambiar carril
-    lw $t1, score
-    li $t2, 4
-    div $t1, $t2
-    mfhi $t1
-    
+   
+    # Mezclar semilla con frameCounter y posici?n Y para m?s aleatoriedad
+    lw $t8, randomSeed
+    lw $t9, frameCounter
+    xor $t8, $t8, $t9
+    lw $t7, obsY
+    add $t8, $t8, $t7
+    sw $t8, randomSeed
+
+    # Elegir tipo aleatorio (0 = cono, 1 = piedra)
+    li $a0, 4
+    jal getRandom
+    sw $v0, obsType
+
+    # Elegir carril aleatorio (0 = izq, 1 = centro, 2 = derecha)
+    lw $t8, randomSeed
+    lw $t9, frameCounter
+    sll $t9, $t9, 3          # Mezcla extra
+    xor $t8, $t8, $t9
+    sw $t8, randomSeed
+    li $a0, 3
+    jal getRandom
+    move $t1, $v0
+
+    beq $t1, 0, setXFarLeft
+    beq $t1, 1, setXLeft
+    beq $t1, 2, setXRight
+   
+    # Elegir tipo aleatorio de obst?culo (0 = cono, 1 = piedra)
+    li $a0, 4
+    jal getRandom
+    sw $v0, obsType
+
+    # Elegir carril aleatorio (0 = izq, 1 = centro, 2 = derecha)
+    li $a0, 3
+    jal getRandom
+    move $t1, $v0
+
     beq $t1, 0, setXFarLeft
     beq $t1, 1, setXLeft
     beq $t1, 2, setXRight
@@ -132,41 +202,41 @@ setXFarLeft:
     lw $s3, obsLane0X
     sw $s3, obsX
     j skipReset
-    
+   
 setXLeft:
     lw $s3, obsLane1X
     sw $s3, obsX
     j skipReset
-    
+   
 setXRight:
     lw $s3, obsLane2X
     sw $s3, obsX
 
 skipReset:
-    # === FASE 2: DIBUJAR TODO DE UN TIRÓN ===
+    # === FASE 2: DIBUJAR TODO DE UN TIR?N ===
     jal updateScroll
     jal drawTrack         # Dibuja fondo
-    
-    # Dibujar obstáculo PRIMERO
+   
+    # Dibujar obst?culo PRIMERO
     move $a0, $s3
     move $a1, $s4
     jal drawObstacle
-    
-    # Dibujar auto DESPUÉS (queda arriba)
+   
+    # Dibujar auto DESPU?S (queda arriba)
     move $a0, $s1
     move $a1, $s2
     jal drawCarSprite32
-    
+   
     # Dibujar HUD
     jal drawHearts
     jal drawScore
-    
+   
     # === FASE 3: INPUT ===
     li $t0, 0xffff0000
     lw $t1, 0($t0)
     andi $t1, $t1, 1
     beq $t1, 0, noKey
-    
+   
     lw $t1, 4($t0)
     beq $t1, 'a', moveLeft
     beq $t1, 'A', moveLeft
@@ -179,14 +249,14 @@ skipReset:
     beq $t1, 'q', exit
     beq $t1, 'Q', exit
     j noKey
-    
+   
 # (moveLeft, moveRight, etc. IGUAL que antes)
 moveLeft:
     lw $t2, carLane
     beqz $t2, noKey
     addi $t2, $t2, -1
     sw $t2, carLane
-    
+   
     beq $t2, 0, setLane0
     beq $t2, 1, setLane1
     j noKey
@@ -196,20 +266,20 @@ setLane0:
     sw $t3, carX
     move $s1, $t3
     j noKey
-    
+   
 setLane1:
     lw $t3, lane1X
     sw $t3, carX
     move $s1, $t3
     j noKey
-    
+   
 moveRight:
     lw $t2, carLane
     li $t3, 2
     bge $t2, $t3, noKey
     addi $t2, $t2, 1
     sw $t2, carLane
-    
+   
     beq $t2, 1, setLane1Right
     beq $t2, 2, setLane2
     j noKey
@@ -219,7 +289,7 @@ setLane1Right:
     sw $t3, carX
     move $s1, $t3
     j noKey
-    
+   
 setLane2:
     lw $t3, lane2X
     sw $t3, carX
@@ -230,6 +300,16 @@ moveUp:
     lw $t2, carSpeed
     li $t3, 3
     bge $t2, $t3, noKey
+    
+    # Verificar si hay slowdown activo
+    lw $t4, slowdownActive
+    beqz $t4, normalMoveUp
+    
+    # Con slowdown, solo puede acelerar hasta velocidad 1
+    li $t3, 1
+    bge $t2, $t3, noKey
+    
+normalMoveUp:
     addi $t2, $t2, 1
     sw $t2, carSpeed
     move $s5, $t2
@@ -244,11 +324,24 @@ moveDown:
     j noKey
 
 noKey:
-    # === FASE 4: COLISIONES ===
+    # === FASE 4: SLOWDOWN Y COLISIONES ===
+    # Actualizar timer del slowdown
+    lw $t0, slowdownActive
+    beqz $t0, checkCollision
+    
+    lw $t1, slowdownTimer
+    addi $t1, $t1, -1
+    sw $t1, slowdownTimer
+    
+    bgtz $t1, checkCollision
+    # Timer llegó a 0, desactivar slowdown
+    sw $zero, slowdownActive
+
+checkCollision:
     bltz $s4, noCol
     li $t0, 128
     bge $s4, $t0, noCol
-    
+   
     move $t0, $s1
     addi $t0, $t0, -10
     move $t1, $s1
@@ -257,7 +350,7 @@ noKey:
     addi $t2, $t2, 5
     move $t3, $s2
     addi $t3, $t3, 27
-    
+   
     move $t4, $s3
     addi $t4, $t4, 2
     move $t5, $s3
@@ -266,58 +359,110 @@ noKey:
     addi $t6, $t6, 2
     move $t7, $s4
     addi $t7, $t7, 14
-    
+   
     bge $t0, $t5, noCol
     ble $t1, $t4, noCol
     bge $t2, $t7, noCol
     ble $t3, $t6, noCol
-    
-    j collision
+   
+    # COLISIÓN DETECTADA - verificar tipo
+    lw $t0, obsType
+    beq $t0, 3, charcoCollision  # Si es charco (tipo 3), manejar diferente
+    j normalCollision
 
-collision:
-    lw $t0, lives
-    addi $t0, $t0, -1
-    sw $t0, lives
+charcoCollision:
+    # Activar slowdown por 3 segundos
+    li $t0, 1
+    sw $t0, slowdownActive
+    li $t0, 30           # ~3 segundos a 50 frames/seg
+    sw $t0, slowdownTimer
     
-    li $v0, 4
-    la $a0, hitMsg
-    syscall
+    # FORZAR velocidad del auto a 0 (frenar)
+    li $t0, 0
+    sw $t0, carSpeed
+    move $s5, $t0
     
-    li $v0, 1
-    move $a0, $t0
-    syscall
-    
-    li $v0, 4
-    la $a0, newlineMsg
-    syscall
-    
-    beqz $t0, exit
-    
+    # Resetear obstáculo
     li $s4, -20
     sw $s4, obsY
     
-    lw $t1, score
-    li $t2, 4
-    div $t1, $t2
-    mfhi $t1
-    
+    # Generar tipo aleatorio: 0, 1, 2 o 3
+    li $a0, 4
+    jal getRandom
+    sw $v0, obsType
+   
+    # Generar carril aleatorio: 0, 1 o 2
+    li $a0, 3
+    jal getRandom
+    move $t1, $v0
+   
+    beq $t1, 0, charcoSetXFarLeft
+    beq $t1, 1, charcoSetXLeft
+    beq $t1, 2, charcoSetXRight
+    j noCol
+
+charcoSetXFarLeft:
+    lw $s3, obsLane0X
+    sw $s3, obsX
+    j noCol
+   
+charcoSetXLeft:
+    lw $s3, obsLane1X
+    sw $s3, obsX
+    j noCol
+   
+charcoSetXRight:
+    lw $s3, obsLane2X
+    sw $s3, obsX
+    j noCol
+
+normalCollision:
+    lw $t0, lives
+    addi $t0, $t0, -1
+    sw $t0, lives
+   
+    li $v0, 4
+    la $a0, hitMsg
+    syscall
+   
+    li $v0, 1
+    move $a0, $t0
+    syscall
+   
+    li $v0, 4
+    la $a0, newlineMsg
+    syscall
+   
+    beqz $t0, exit
+   
+    li $s4, -20
+    sw $s4, obsY
+   
+    # Generar tipo aleatorio: 0, 1, 2 o 3
+    li $a0, 4
+    jal getRandom
+    sw $v0, obsType
+   
+    # Generar carril aleatorio: 0, 1 o 2
+    li $a0, 3
+    jal getRandom
+    move $t1, $v0
+   
     beq $t1, 0, collSetXFarLeft
     beq $t1, 1, collSetXLeft
     beq $t1, 2, collSetXRight
-    li $s3, 43
-    sw $s3, obsX
     j noCol
 
 collSetXFarLeft:
     lw $s3, obsLane0X
     sw $s3, obsX
     j noCol
-    
+   
 collSetXLeft:
     lw $s3, obsLane1X
     sw $s3, obsX
     j noCol
-    
+   
 collSetXRight:
     lw $s3, obsLane2X
     sw $s3, obsX
@@ -329,7 +474,9 @@ noCol:
 delayLoop:
     addi $t0, $t0, -1
     bgtz $t0, delayLoop
-    
+   
+    j loop
+   
     j loop
 
 exit:
@@ -353,11 +500,11 @@ fillLoop:
 clearScreen:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
-    
+   
     li $a0, 0x10008000
     li $a1, 0x000000        # Negro
     jal fillScreen
-    
+   
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
@@ -365,49 +512,49 @@ clearScreen:
 updateScroll:
     lw $t0, scrollOffset
     lw $t1, carSpeed
-    
-    # Scroll más suave
-    addi $t0, $t0, 1        # Era 2, ahora 1 (más suave)
-    
+   
+    # Scroll m?s suave
+    addi $t0, $t0, 1        # Era 2, ahora 1 (m?s suave)
+   
     # Agregar velocidad del auto
     add $t0, $t0, $t1
-    
+   
     # Loop cuando llega a 64
     li $t2, 64
 loopCheck:
     blt $t0, $t2, saveScroll
     sub $t0, $t0, $t2
     j loopCheck
-    
+   
 saveScroll:
     sw $t0, scrollOffset
     jr $ra
 
 
-# REEMPLAZA COMPLETAMENTE drawTrack con esta versión:
+# REEMPLAZA COMPLETAMENTE drawTrack con esta versi?n:
 drawTrack:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
-    
+   
     lw $t9, scrollOffset    # Cargar offset actual
-    
+   
     # Sprite 1: Arriba (puede estar parcialmente fuera)
     li $a0, 0               # X = 0
     move $a1, $t9           # Y = offset
     addi $a1, $a1, -64      # Restar 64 para que empiece arriba
     jal drawPista64Simple
-    
+   
     # Sprite 2: Centro
     li $a0, 0
     move $a1, $t9           # Y = offset
     jal drawPista64Simple
-    
+   
     # Sprite 3: Abajo
     li $a0, 0
     move $a1, $t9
-    addi $a1, $a1, 64       # Sumar 64 para que esté abajo
+    addi $a1, $a1, 64       # Sumar 64 para que est? abajo
     jal drawPista64Simple
-    
+   
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
@@ -430,38 +577,38 @@ drawPista64Simple:
 
 rowLoop:
     add $s4, $s1, $s3       # Y_pantalla
-    
+   
     # Clipping vertical
     bltz $s4, skipRow
     li $t0, 128
     bge $s4, $t0, endSprite
-    
-    # Calcular dirección base de la fila UNA SOLA VEZ
+   
+    # Calcular direcci?n base de la fila UNA SOLA VEZ
     li $t2, 0x10008000
     move $t3, $s4
     sll $t3, $t3, 6         # Y * 64 (optimizado)
     add $t3, $t3, $s0
     sll $t3, $t3, 2
-    add $t2, $t2, $t3       # Dirección base de la fila
-    
+    add $t2, $t2, $t3       # Direcci?n base de la fila
+   
     li $s5, 0               # columna
 
 colLoop:
     lw $t0, 0($s2)          # RGBA
     srl $t1, $t0, 24        # Alpha
-    
+   
     # SI alpha = 0, dibujar NEGRO (esto borra el fondo)
     beqz $t1, drawBlack
     andi $t0, $t0, 0x00FFFFFF   # RGB
     j drawIt
-    
+   
 drawBlack:
     li $t0, 0x000000        # Negro
-    
+   
 drawIt:
     # Dibujar directamente
     sw $t0, 0($t2)
-    addi $t2, $t2, 4        # Siguiente píxel
+    addi $t2, $t2, 4        # Siguiente p?xel
 
     addi $s2, $s2, 4
     addi $s5, $s5, 1
@@ -573,7 +720,7 @@ drawBodyMain:
     addi $t8, $t8, -1
     bgtz $t8, drawBodyMain
    
-    # FILA 6: Transición (gris + rojo)
+    # FILA 6: Transici?n (gris + rojo)
     addi $a1, $s7, 6
     move $a0, $s6
     addi $a0, $a0, -3
@@ -697,15 +844,15 @@ drawLowerSection:
     jr $ra
    
 setPixel:
-    # Validar coordenadas ANTES de calcular dirección
+    # Validar coordenadas ANTES de calcular direcci?n
     bltz $a0, skipSetPixel      # Si X < 0, skip
     li $t0, 64
     bge $a0, $t0, skipSetPixel  # Si X >= 64, skip
     bltz $a1, skipSetPixel      # Si Y < 0, skip
     li $t0, 128
     bge $a1, $t0, skipSetPixel  # Si Y >= 128, skip
-    
-    # Ahora sí, calcular dirección (SEGURO)
+   
+    # Ahora s?, calcular direcci?n (SEGURO)
     li $t0, 0x10008000
     move $t1, $a1
     sll $t1, $t1, 6         # Y * 64 (optimizado)
@@ -718,8 +865,8 @@ skipSetPixel:
     jr $ra
    
 # Dibuja sprite de 32x32 del archivo animacion choque piedra.c
-# a0 = x (posición X)
-# a1 = y (posición Y)
+# a0 = x (posici?n X)
+# a1 = y (posici?n Y)
 drawCarSprite32:
     addi $sp, $sp, -28
     sw $ra, 0($sp)
@@ -729,13 +876,13 @@ drawCarSprite32:
     sw $s3, 16($sp)
     sw $s4, 20($sp)
     sw $s5, 24($sp)
-    
+   
     move $s0, $a0        # X (centro del sprite)
     move $s1, $a1        # Y (top del sprite)
-    
+   
     # Calcular X inicial (sprite centrado)
     addi $s0, $s0, -16   # X inicial = X_centro - 16
-    
+   
     la $t0, animacion_choque_piedra_data
     li $s3, 0            # fila
 
@@ -747,23 +894,23 @@ loopX32:
     beqz $t7, skipPixel32 # si alpha=0, skip
     andi $t6, $t5, 0x00FFFFFF
    
-    # Calcular X del píxel
+    # Calcular X del p?xel
     add $t8, $s0, $s4
-    
+   
     # CLIPPING HORIZONTAL - AGREGAR ESTO
     bltz $t8, skipPixel32        # Si X < 0, skip
     li $t9, 64
     bge $t8, $t9, skipPixel32    # Si X >= 64, skip
-    
-    # Calcular Y del píxel
+   
+    # Calcular Y del p?xel
     add $t9, $s1, $s3
-    
+   
     # CLIPPING VERTICAL
     bltz $t9, skipPixel32        # Si Y < 0, skip
     li $s2, 128
     bge $t9, $s2, skipPixel32    # Si Y >= 128, skip
-    
-    # Calcular dirección de píxel
+   
+    # Calcular direcci?n de p?xel
     li $t7, 0x10008000
     mul $s2, $t9, 64             # Y * ancho
     add $s2, $s2, $t8            # + X
@@ -796,11 +943,44 @@ drawObstacle:
     sw $ra, 0($sp)
     sw $s6, 4($sp)
    
-    move $a0, $a0        # X ya está en $a0
-    move $a1, $a1        # Y ya está en $a1
-    la $a2, cono_data    # Cargar dirección del sprite
+    move $s6, $a0        # Guardar X
+    move $s7, $a1        # Guardar Y
+   
+    # Cargar tipo de obstáculo
+    lw $t0, obsType
+    beqz $t0, drawCono
+    beq $t0, 1, drawPiedra
+    beq $t0, 2, drawPozo
+    beq $t0, 3, drawCharco
+   
+drawPiedra:
+    move $a0, $s6
+    move $a1, $s7
+    la $a2, piedra_data
+    jal drawSprite16Scaled
+    j endDrawObstacle
+
+drawPozo:
+    move $a0, $s6
+    move $a1, $s7
+    la $a2, pozo_data
+    jal drawSprite16Scaled
+    j endDrawObstacle
+
+drawCharco:
+    move $a0, $s6
+    move $a1, $s7
+    la $a2, charco_data
+    jal drawSprite16Scaled
+    j endDrawObstacle
+   
+drawCono:
+    move $a0, $s6
+    move $a1, $s7
+    la $a2, cono_data
     jal drawSprite16Scaled
    
+endDrawObstacle:
     lw $ra, 0($sp)
     lw $s6, 4($sp)
     addi $sp, $sp, 8
@@ -809,7 +989,7 @@ drawObstacle:
 # Dibuja sprite 32x32 escalado a 16x16
 # $a0 = X (esquina superior izquierda)
 # $a1 = Y
-# $a2 = dirección del sprite data
+# $a2 = direcci?n del sprite data
 drawSprite16Scaled:
     addi $sp, $sp, -32
     sw $ra, 0($sp)
@@ -820,38 +1000,38 @@ drawSprite16Scaled:
     sw $s4, 20($sp)
     sw $s5, 24($sp)
     sw $s6, 28($sp)
-    
+   
     move $s0, $a0        # X destino
     move $s1, $a1        # Y destino
     move $s2, $a2        # Puntero a datos
-    
+   
     li $s3, 0            # fila destino (0-15)
 
 loopYScaled:
     li $s4, 0            # columna destino (0-15)
-    
+   
 loopXScaled:
-    # Calcular offset en sprite original (tomar cada 2 píxeles)
+    # Calcular offset en sprite original (tomar cada 2 p?xeles)
     move $t0, $s3
     sll $t0, $t0, 1      # fila_src = fila_dst * 2
     move $t1, $s4
     sll $t1, $t1, 1      # col_src = col_dst * 2
-    
-    # Calcular índice en array: (fila_src * 32 + col_src) * 4
+   
+    # Calcular ?ndice en array: (fila_src * 32 + col_src) * 4
     mul $t2, $t0, 32
     add $t2, $t2, $t1
     sll $t2, $t2, 2
     add $t3, $s2, $t2
-    
-    lw $t5, 0($t3)       # Cargar píxel
+   
+    lw $t5, 0($t3)       # Cargar p?xel
     srl $t7, $t5, 24     # Extraer alpha
     beqz $t7, skipPixelScaled
     andi $t6, $t5, 0x00FFFFFF
-    
-    # Calcular posición destino
+   
+    # Calcular posici?n destino
     add $t8, $s0, $s4    # X
     add $t9, $s1, $s3    # Y
-    
+   
     # Clipping
     bltz $t8, skipPixelScaled
     li $s5, 64
@@ -859,7 +1039,7 @@ loopXScaled:
     bltz $t9, skipPixelScaled
     li $s5, 128
     bge $t9, $s5, skipPixelScaled
-    
+   
     # Dibujar
     li $t7, 0x10008000
     mul $s5, $t9, 64
@@ -889,50 +1069,50 @@ skipPixelScaled:
     jr $ra
 
 # Dibuja los corazones de vida
-# No recibe parámetros, lee directamente de 'lives'
+# No recibe par?metros, lee directamente de 'lives'
 drawHearts:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
-    
+   
     lw $t9, lives         # Cargar vidas actuales
-    
-    # Posición base: abajo a la derecha
+   
+    # Posici?n base: abajo a la derecha
     li $s6, 50            # X inicial (esquina derecha)
     li $s7, 120           # Y inicial (cerca del fondo)
-    
+   
     # Dibujar 3 corazones
-    li $t8, 0             # Contador de corazón
-    
+    li $t8, 0             # Contador de coraz?n
+   
 heartLoop:
     bge $t8, 3, endHearts # Si ya dibujamos 3, terminar
-    
-    # Calcular X de este corazón (separados por 5 píxeles)
+   
+    # Calcular X de este coraz?n (separados por 5 p?xeles)
     move $a0, $s6
     li $t7, 5
     mult $t8, $t7
     mflo $t7
     sub $a0, $a0, $t7     # X = 50 - (i * 5)
-    
+   
     move $a1, $s7         # Y fija
-    
+   
     # Decidir color: rojo si vida activa, gris si perdida
-    slt $t7, $t8, $t9     # ¿t8 < vidas? ? rojo : gris
+    slt $t7, $t8, $t9     # ?t8 < vidas? ? rojo : gris
     beqz $t7, grayHeart
-    
-    # Corazón ROJO (vida activa)
+   
+    # Coraz?n ROJO (vida activa)
     li $a2, 0xFF0000
     j drawThisHeart
-    
+   
 grayHeart:
-    # Corazón GRIS (vida perdida)
+    # Coraz?n GRIS (vida perdida)
     li $a2, 0x444444
-    
+   
 drawThisHeart:
-    # Dibujar un corazón simple de 3x3
+    # Dibujar un coraz?n simple de 3x3
     # Fila 1: . X .
     addi $a0, $a0, 1
     jal setPixel
-    
+   
     # Fila 2: X X X
     addi $a1, $a1, 1
     subi $a0, $a0, 1
@@ -941,87 +1121,150 @@ drawThisHeart:
     jal setPixel
     addi $a0, $a0, 1
     jal setPixel
-    
+   
     # Fila 3: . X .
     addi $a1, $a1, 1
     subi $a0, $a0, 1
     jal setPixel
-    
-    # Siguiente corazón
+   
+    # Siguiente coraz?n
     addi $t8, $t8, 1
     j heartLoop
-    
+   
 endHearts:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
-    
+   
 # Dibuja el score en pantalla (esquina superior izquierda)
 drawScore:
-    addi $sp, $sp, -4
+    addi $sp, $sp, -28
     sw $ra, 0($sp)
-    
-    lw $t0, score
-    li $t1, 10
-    li $t2, 8           # X inicial
-    li $t3, 8           # Y inicial
-    li $t9, 0           # Contador de dígitos
-    
-    # Si score es 0, dibujar un 0
-    beqz $t0, drawZero
-    
-    # Contar dígitos y extraer
-    move $t4, $t0
-countDigits:
-    beqz $t4, drawDigits
-    divu $t4, $t1
-    mflo $t4
-    addi $t9, $t9, 1
-    j countDigits
-    
-drawDigits:
-    # Calcular posición X final
-    move $t5, $t9
-    sll $t5, $t5, 2     # * 4 pixeles por dígito
-    add $t5, $t2, $t5
-    
-drawDigitLoop:
-    beqz $t9, endDrawScore
-    
-    divu $t0, $t1
-    mfhi $t6            # Dígito actual
-    mflo $t0            # Resto
-    
-    # Dibujar dígito
-    move $a0, $t5
-    move $a1, $t3
-    move $a2, $t6
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    sw $s4, 20($sp)
+    sw $s5, 24($sp)
+   
+    lw $s0, score       # s0 = score original
+    li $s2, 8           # s2 = X base
+    li $s3, 8           # s3 = Y
+   
+    # Si score es 0, dibujar solo un 0
+    beqz $s0, drawSingleZero
+   
+    # Extraer d?gitos en un array temporal (m?ximo 8 d?gitos)
+    move $s1, $s0       # s1 = n?mero temporal
+    li $s4, 0           # s4 = cantidad de d?gitos
+    addi $sp, $sp, -32  # espacio para 8 d?gitos
+   
+extractLoop:
+    beqz $s1, printDigits
+   
+    # Extraer ?ltimo d?gito
+    li $t0, 10
+    divu $s1, $t0
+    mfhi $t1            # t1 = d?gito (resto)
+    mflo $s1            # s1 = n?mero / 10
+   
+    # Guardar d?gito en stack
+    sll $t2, $s4, 2     # offset = contador * 4
+    add $t2, $t2, $sp
+    sw $t1, 0($t2)
+   
+    addi $s4, $s4, 1
+    j extractLoop
+   
+printDigits:
+    # Ahora imprimir del ?ltimo al primero (del m?s significativo al menos)
+    li $s5, 0           # ?ndice actual
+   
+printLoop:
+    bge $s5, $s4, finishPrint
+   
+    # Calcular ?ndice inverso
+    sub $t0, $s4, $s5
+    addi $t0, $t0, -1
+   
+    # Obtener d?gito del stack
+    sll $t0, $t0, 2
+    add $t0, $t0, $sp
+    lw $a2, 0($t0)
+   
+    # Dibujar d?gito
+    move $a0, $s2
+    move $a1, $s3
     jal drawDigit
-    
-    addi $t5, $t5, -4   # Mover a la izquierda
-    addi $t9, $t9, -1
-    j drawDigitLoop
-    
+   
+    # Siguiente posici?n X
+    addi $s2, $s2, 4
+    addi $s5, $s5, 1
+    j printLoop
+   
+finishPrint:
+    addi $sp, $sp, 32   # restaurar stack
+    j endDrawScore
+
+drawSingleZero:
+    move $a0, $s2
+    move $a1, $s3
+    li $a2, 0
+    jal drawDigit
+   
+endDrawScore:
+    lw $ra, 0($sp)
+    lw $s0, 4($sp)
+    lw $s1, 8($sp)
+    lw $s2, 12($sp)
+    lw $s3, 16($sp)
+    lw $s4, 20($sp)
+    lw $s5, 24($sp)
+    addi $sp, $sp, 28
+    jr $ra
+   
+drawFromStack:
+    beqz $s1, finishDraw
+   
+    # Recuperar d?gito del stack
+    lw $a2, 0($sp)
+    addi $sp, $sp, 4
+   
+    # Dibujar d?gito
+    move $a0, $t5
+    move $a1, $s3
+    jal drawDigit
+   
+    # Mover X a la derecha para el siguiente d?gito
+    addi $t5, $t5, 4
+    addi $s1, $s1, -1
+    j drawFromStack
+   
 drawZero:
     move $a0, $t2
     move $a1, $t3
     li $a2, 0
     jal drawDigit
-    
-endDrawScore:
+    j finishDraw
+
+finishDraw:
     lw $ra, 0($sp)
-    addi $sp, $sp, 4
+    lw $s0, 4($sp)
+    lw $s1, 8($sp)
+    lw $s2, 12($sp)
+    lw $s3, 16($sp)
+    addi $sp, $sp, 20
     jr $ra
 
-# Dibuja un dígito 3x5 simple
-# $a0 = X, $a1 = Y, $a2 = dígito (0-9)
+# Dibuja un d?gito 3x5 simple
+# $a0 = X, $a1 = Y, $a2 = d?gito (0-9)
 drawDigit:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
-    
+   
     li $t7, 0xFFFF00    # Color amarillo
-    
-    # Switch según dígito
+   
+    # Switch seg?n d?gito
     beq $a2, 0, digit0
     beq $a2, 1, digit1
     beq $a2, 2, digit2
@@ -1324,6 +1567,38 @@ endDigit:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
+   
+# Genera n?mero aleatorio simple (LCG)
+# Retorna en $v0 un n?mero entre 0 y $a0-1
+getRandom:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+
+    # Mezclar semilla con frameCounter y direcci?n de stack
+    lw $t0, randomSeed
+    lw $t1, frameCounter
+    addu $t0, $t0, $t1         # addu evita overflow con signo
+    xor  $t0, $t0, $sp
+
+    # LCG: next = (seed * 1664525 + 1013904223) mod 2^32
+    li $t2, 1664525
+    multu $t0, $t2
+    mflo $t0                   # parte baja del producto
+    li $t3, 1013904223
+    addu $t0, $t0, $t3         # usar addu en lugar de addi (sin overflow)
+    sw $t0, randomSeed
+
+    # Mezclar bits altos y bajos
+    srl $t4, $t0, 16
+    xor $t0, $t0, $t4
+
+    # Tomar m?dulo del rango pedido (0 .. $a0-1)
+    divu $t0, $a0
+    mfhi $v0
+
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
 
 .data
 gameOverMsg: .asciiz "\n=== GAME OVER ===\nScore: "
@@ -1333,7 +1608,7 @@ exitMsg: .asciiz "\nBye!\n"
 
 scrollOffset: .word 0
 
-lineOffset: .word 0      # Offset para el scroll de líneas
+lineOffset: .word 0      # Offset para el scroll de l?neas
 lineSpeed: .word 1       # Velocidad de scroll
 # Sprite 32x32 del auto rojo
 animacion_choque_piedra_data:
@@ -1474,3 +1749,113 @@ cono_data:
 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0x00000000, 0x00000000,
 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000
+
+# Sprite de piedra 32x32
+piedra_data:
+    .word
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff6f6f6f, 0xff5f5f5f, 0xff474747, 0xff575757, 0xff4f4f4f, 0xff0f0f0f, 0xff5f5f5f, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff000000, 0xff676767, 0xff5f5f5f, 0xff9f9f9f, 0xffb7b7b7, 0xff7f7f7f, 0xff7f7f7f, 0xff676767, 0xff676767, 0xff6f6f6f, 0xff8f8f8f, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff474747, 0xff272727, 0xff6f6f6f, 0xff9f9f9f, 0xffb7b7b7, 0xffdfdfdf, 0xff979797, 0xff8f8f8f, 0xff6f6f6f, 0xffd7d7d7, 0xff8f8f8f, 0xff979797, 0xff7f7f7f, 0xff8f8f8f, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff7f7f7f, 0xff8f8f8f, 0xff7f7f7f, 0xff7f7f7f, 0xff878787, 0xff8f8f8f, 0xff8f8f8f, 0xff777777, 0xff878787, 0xff8f8f8f, 0xff979797, 0xff9f9f9f, 0xff979797, 0xff878787, 0xff7f7f7f, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff777777, 0xff878787, 0xff676767, 0xff8f8f8f, 0xff7f7f7f, 0xff878787, 0xff5f5f5f, 0xff878787, 0xff8f8f8f, 0xff8f8f8f, 0xff979797, 0xff8f8f8f, 0xffc7c7c7, 0xff8f8f8f, 0xffa7a7a7, 0xffa7a7a7, 0xff8f8f8f, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff777777, 0xff8f8f8f, 0xff676767, 0xff8f8f8f, 0xff777777, 0xff8f8f8f, 0xff6f6f6f, 0xff878787, 0xff7f7f7f, 0xff8f8f8f, 0xffa7a7a7, 0xff8f8f8f, 0xffcfcfcf, 0xff8f8f8f, 0xffbfbfbf, 0xff7f7f7f, 0xff8f8f8f, 0xff575757, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff878787, 0xff6f6f6f, 0xff8f8f8f, 0xff8f8f8f, 0xff575757, 0xff8f8f8f, 0xff8f8f8f, 0xff7f7f7f, 0xff878787, 0xff8f8f8f, 0xffafafaf, 0xff8f8f8f, 0xff8f8f8f, 0xffbfbfbf, 0xff8f8f8f, 0xff8f8f8f, 0xff3f3f3f, 0xff8f8f8f, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff8f8f8f, 0xff7f7f7f, 0xff8f8f8f, 0xff676767, 0xff6f6f6f, 0xff7f7f7f, 0xff878787, 0xff8f8f8f, 0xff5f5f5f, 0xff7f7f7f, 0xff676767, 0xff8f8f8f, 0xff979797, 0xff8f8f8f, 0xff7f7f7f, 0xff676767, 0xff8f8f8f, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff8f8f8f, 0xff878787, 0xff777777, 0xff7f7f7f, 0xff8f8f8f, 0xff8f8f8f, 0xff8f8f8f, 0xff8f8f8f, 0xff7f7f7f, 0xff8f8f8f, 0xff8f8f8f, 0xff8f8f8f, 0xff9f9f9f, 0xff777777, 0xff6f6f6f, 0xff7f7f7f, 0xff8f8f8f, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff8f8f8f, 0xff7f7f7f, 0xff8f8f8f, 0xff6f6f6f, 0xff676767, 0xff5f5f5f, 0xff979797, 0xff979797, 0xff777777, 0xff979797, 0xff8f8f8f, 0xff5f5f5f, 0xff8f8f8f, 0xff7f7f7f, 0xff878787, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff878787, 0xff777777, 0xff8f8f8f, 0xff777777, 0xff676767, 0xff8f8f8f, 0xffa7a7a7, 0xff8f8f8f, 0xff777777, 0xff8f8f8f, 0xff7f7f7f, 0xff8f8f8f, 0xff6f6f6f, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff080808, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000
+
+pozo_data:
+    .word
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff3b3b3b, 0xff3b3b3b, 0xff3b3b3b, 0xff3b3b3b, 0xff3b3b3b, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff3b3b3b, 0xff3b3b3b, 0xff626262, 0xff626262, 0xff626262, 0xff626262, 0xff626262, 0xff3b3b3b, 0xff3b3b3b, 0xff3b3b3b, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff3b3b3b, 0xff626262, 0xff626262, 0xff626262, 0xff3b3b3b, 0xff3b3b3b, 0xff3b3b3b, 0xff626262, 0xff626262, 0xff626262, 0xff626262, 0xff3b3b3b, 0xff3b3b3b, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff3b3b3b, 0xff626262, 0xff626262, 0xff262626, 0xff3b3b3b, 0xff3b3b3b, 0xff171717, 0xff3b3b3b, 0xff3b3b3b, 0xff3b3b3b, 0xff3b3b3b, 0xff626262, 0xff626262, 0xff626262, 0xff3b3b3b, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff3b3b3b, 0xff626262, 0xff626262, 0xff3b3b3b, 0xff3b3b3b, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff3b3b3b, 0xff3b3b3b, 0xff262626, 0xff626262, 0xff626262, 0xff3b3b3b, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff3b3b3b, 0xff626262, 0xff626262, 0xff3b3b3b, 0xff3b3b3b, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff3b3b3b, 0xff3b3b3b, 0xff3b3b3b, 0xff626262, 0xff626262, 0xff3b3b3b, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff3b3b3b, 0xff626262, 0xff626262, 0xff3b3b3b, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff3b3b3b, 0xff3b3b3b, 0xff626262, 0xff3b3b3b, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff3b3b3b, 0xff626262, 0xff626262, 0xff3b3b3b, 0xff3b3b3b, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff3b3b3b, 0xff3b3b3b, 0xff626262, 0xff3b3b3b, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff3b3b3b, 0xff3b3b3b, 0xff626262, 0xff626262, 0xff3b3b3b, 0xff3b3b3b, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff3b3b3b, 0xff3b3b3b, 0xff262626, 0xff626262, 0xff3b3b3b, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff3b3b3b, 0xff3b3b3b, 0xff626262, 0xff626262, 0xff3b3b3b, 0xff3b3b3b, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff171717, 0xff3b3b3b, 0xff3b3b3b, 0xff3b3b3b, 0xff626262, 0xff626262, 0xff3b3b3b, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff3b3b3b, 0xff3b3b3b, 0xff626262, 0xff626262, 0xff3b3b3b, 0xff3b3b3b, 0xff3b3b3b, 0xff3b3b3b, 0xff3b3b3b, 0xff3b3b3b, 0xff3b3b3b, 0xff3b3b3b, 0xff626262, 0xff626262, 0xff626262, 0xff3b3b3b, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff3b3b3b, 0xff626262, 0xff626262, 0xff626262, 0xff3b3b3b, 0xff262626, 0xff3b3b3b, 0xff626262, 0xff626262, 0xff626262, 0xff626262, 0xff3b3b3b, 0xff3b3b3b, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff3b3b3b, 0xff3b3b3b, 0xff626262, 0xff626262, 0xff626262, 0xff626262, 0xff626262, 0xff3b3b3b, 0xff3b3b3b, 0xff3b3b3b, 0xff3b3b3b, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff3b3b3b, 0xff3b3b3b, 0xff3b3b3b, 0xff3b3b3b, 0xff3b3b3b, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000
+
+charco_data:
+    .word
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0x00000000, 0xff000000, 0xff000000, 0xff000000, 0x00000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff000000, 0xff4c4c4c, 0xff4c4c4c, 0xff000000, 0xff000000, 0xff000000, 0xff4c4c4c, 0xff4c4c4c, 0xff545454, 0xff4c4c4c, 0xff4c4c4c, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff4c4c4c, 0xff4c4c4c, 0xff5c5c5c, 0xff646464, 0xff646464, 0xff5c5c5c, 0xff242424, 0xff343434, 0xff3c3c3c, 0xff4c4c4c, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff000000, 0xff181818, 0xff000000, 0xff242424, 0xff4c4c4c, 0xff444444, 0xff848484, 0xff6c6c6c, 0xff545454, 0xff646464, 0xff9c9c9c, 0xff3c3c3c, 0xff1c1c1c, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff4c4c4c, 0xff8c8c8c, 0xff6c6c6c, 0xff4c4c4c, 0xff242424, 0xff3c3c3c, 0xff545454, 0xff949494, 0xff444444, 0xff5c5c5c, 0xff949494, 0xff949494, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff000000, 0xff5c5c5c, 0xff5c5c5c, 0xff5c5c5c, 0xff3c3c3c, 0xff747474, 0xff7c7c7c, 0xff7c7c7c, 0xff646464, 0xff6c6c6c, 0xff747474, 0xff747474, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff4c4c4c, 0xff545454, 0xff545454, 0xff747474, 0xff545454, 0xff6c6c6c, 0xff545454, 0xff5c5c5c, 0xff646464, 0xff848484, 0xff4c4c4c, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff4c4c4c, 0xff4c4c4c, 0xff5c5c5c, 0xff5c5c5c, 0xff6c6c6c, 0xff646464, 0xff141414, 0xff9c9c9c, 0xff7c7c7c, 0xff646464, 0xff646464, 0xff6c6c6c, 0xff646464, 0xff545454, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff4c4c4c, 0xff4c4c4c, 0xff5c5c5c, 0xff545454, 0xff5c5c5c, 0xff5c5c5c, 0xff343434, 0xffa4a4a4, 0xff8c8c8c, 0xff7c7c7c, 0xff8c8c8c, 0xff8c8c8c, 0xff4c4c4c, 0xff4c4c4c, 0xff646464, 0xff4c4c4c, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff4c4c4c, 0xff545454, 0xff5c5c5c, 0xff646464, 0xff6c6c6c, 0xff6c6c6c, 0xff747474, 0xff545454, 0xff7c7c7c, 0xff747474, 0xff5c5c5c, 0xff8c8c8c, 0xff949494, 0xffdcdcdc, 0xff4c4c4c, 0xff4c4c4c, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff4c4c4c, 0xff8c8c8c, 0xff848484, 0xff6c6c6c, 0xff4c4c4c, 0xff3c3c3c, 0xff747474, 0xff646464, 0xff7c7c7c, 0xff8c8c8c, 0xff8c8c8c, 0xff5c5c5c, 0xff4c4c4c, 0xff4c4c4c, 0xff343434, 0xff4c4c4c, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff4c4c4c, 0xff545454, 0xff646464, 0xff8c8c8c, 0xff4c4c4c, 0xff5c5c5c, 0xff545454, 0xff6c6c6c, 0xff4c4c4c, 0xff6c6c6c, 0xff4c4c4c, 0xff4c4c4c, 0xff4c4c4c, 0xff4c4c4c, 0xff4c4c4c, 0xff1c1c1c, 0xff4c4c4c, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff5c5c5c, 0xff7c7c7c, 0xff545454, 0xff848484, 0xff848484, 0xff4c4c4c, 0xff5c5c5c, 0xff444444, 0xff5c5c5c, 0xff4c4c4c, 0xff4c4c4c, 0xff4c4c4c, 0xff000000, 0xff000000, 0xff4c4c4c, 0xff4c4c4c, 0xff4c4c4c, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff646464, 0xff6c6c6c, 0xff5c5c5c, 0xff646464, 0xff747474, 0xff646464, 0xff4c4c4c, 0xff7c7c7c, 0xff444444, 0xff646464, 0xff5c5c5c, 0xff343434, 0xff4c4c4c, 0xff4c4c4c, 0xff3c3c3c, 0xff242424, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff4c4c4c, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff7c7c7c, 0xffb4b4b4, 0xff949494, 0xffb4b4b4, 0xff848484, 0xff545454, 0xff747474, 0xff444444, 0xff2c2c2c, 0xff4c4c4c, 0xff4c4c4c, 0xff242424, 0xff3c3c3c, 0xff2c2c2c, 0xff444444, 0xff343434, 0xff000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xffc4c4c4, 0xff848484, 0xff4c4c4c, 0xff4c4c4c, 0xff4c4c4c, 0xff4c4c4c, 0xff4c4c4c, 0xff4c4c4c, 0xff3c3c3c, 0xff545454, 0xff9c9c9c, 0xff4c4c4c, 0xff4c4c4c, 0xff4c4c4c, 0xff2c2c2c, 0xff4c4c4c, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff4c4c4c, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff4c4c4c, 0xff4c4c4c, 0xff3c3c3c, 0xff4c4c4c, 0xff4c4c4c, 0xff545454, 0xff6c6c6c, 0xff545454, 0xff1c1c1c, 0xff4c4c4c, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff4c4c4c, 0xff2c2c2c, 0xff4c4c4c, 0xff000000, 0xff000000, 0xff000000, 0xff4c4c4c, 0xff000000, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff3c3c3c, 0xff4c4c4c, 0xff000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff3c3c3c, 0xff444444, 0xff000000, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff4c4c4c, 0xff242424, 0xff4c4c4c, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff242424, 0xff3c3c3c, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff4c4c4c, 0xff4c4c4c, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xff000000, 0xff000000, 0xff000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000
+
+obsType: .word 0        # 0 = cono, 1 = piedra, 2 = pozo, 3 = charco
+slowdownTimer: .word 0
+slowdownActive: .word 0
+randomSeed: .word 0 # Semilla para generador aleatorio
+frameCounter: .word 0

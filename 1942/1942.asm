@@ -1,4 +1,4 @@
-# Game 1942 - Version 3.0 
+# Game 1942 - Version 4.0 
 
 .data
     .align 2
@@ -73,7 +73,29 @@
     final_ship_y_offset:   .word -48     # Empieza arriba (fuera de pantalla, negativo)
     final_ship_scroll_speed: .word 1     # Velocidad de aparición
     game_timer:            .word 0       
-    FINAL_SHIP_TRIGGER:    .word 6000
+    FINAL_SHIP_TRIGGER:    .word 600
+    
+    # Sistema de Boss Final
+    boss_active:         .word 0
+    boss_x:              .word 18           # Centrado (64-27)/2 ? 18
+    boss_y:              .word -27          # Empieza arriba (fuera de pantalla)
+    boss_old_x:          .word 18
+    boss_old_y:          .word -27
+    boss_health:         .word 15           # 15 golpes para matarlo
+    BOSS_MAX_HEALTH:     .word 15
+    BOSS_SIZE:           .word 27
+    BOSS_MOVE_SPEED:     .word 1
+    boss_move_counter:   .word 0
+    BOSS_MOVE_RATE:      .word 5            # Se mueve cada 5 frames
+    boss_direction:      .word 1            # 1=derecha, -1=izquierda
+    BOSS_POINTS:         .word 1000
+    boss_shoot_counter:  .word 0
+    BOSS_SHOOT_RATE:     .word 60            # Dispara cada 25 frames
+
+    # Colores del boss
+    boss_green_light:    .word 0x00AA00     # Verde claro
+    boss_green_dark:     .word 0x005000     # Verde oscuro  
+    boss_white:          .word 0xFFFFFF     # Blanco (hélices)
     
     # Paleta de colores
     sea_colors:
@@ -200,6 +222,38 @@
     .byte 0,0,0,1,1,1,0,0,0
     .byte 0,0,1,1,2,1,1,0,0
     
+    # Sprite del Boss 27x27 (0=transparente, 1=verde claro, 2=verde oscuro, 3=blanco)
+    # Sprite del Boss 27x27 (0=transparente, 1=verde claro, 2=verde oscuro, 3=blanco)
+.align 2
+boss_sprite:
+.byte 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,1,1,1,1,1,1,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,1,1,1,1,1,1,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,1,1,1,1,1,1,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,1,1,1,2,2,2,1,1,1,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,1,1,1,2,2,2,1,1,1,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,1,1,1,2,2,2,1,1,1,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0
+.byte 0,0,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,0,0,0
+.byte 0,0,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,0,0,0
+.byte 0,0,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,0,0,0
+.byte 1,1,1,1,1,1,1,1,1,1,1,1,3,3,3,1,1,1,1,1,1,1,1,1,1,1,1
+.byte 1,1,1,1,1,1,1,1,1,1,1,1,3,3,3,1,1,1,1,1,1,1,1,1,1,1,1
+.byte 1,1,1,1,1,1,1,1,1,1,1,1,3,3,3,1,1,1,1,1,1,1,1,1,1,1,1
+.byte 0,0,1,1,1,1,1,1,1,1,1,1,3,3,3,1,1,1,1,1,1,1,1,1,0,0,0
+.byte 0,0,1,1,1,1,1,1,1,1,1,1,3,3,3,1,1,1,1,1,1,1,1,1,0,0,0
+.byte 0,0,1,1,1,1,1,1,1,1,1,1,3,3,3,1,1,1,1,1,1,1,1,1,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,1,1,1,1,1,1,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,1,1,1,1,1,1,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,1,1,1,1,1,1,0,0,0,0,0,0
+    
     # Sprite del portaaviones 32x48 (0=mar, 1=gris, 2=gris claro, 3=negro)
     .align 2
     carrier_sprite:
@@ -310,6 +364,8 @@
     msg_game_over:   .asciiz "\n*** GAME OVER ***\n"
     msg_victory:     .asciiz "\n*** ¡VICTORIA! Has llegado al portaaviones final! ***\n"
     msg_final_ship:  .asciiz "\n¡Portaaviones final a la vista!\n"
+    msg_boss_appears: .asciiz "\n¡BOSS FINAL DETECTADO!\n"
+    msg_boss_defeated: .asciiz "\n¡BOSS DERROTADO!\n"
     newline:         .asciiz "\n"
     
 .text
@@ -351,34 +407,57 @@ game_loop:
     addi $t0, $t0, 1
     sw $t0, game_timer
     
-    # Verificar si activar barco final
+    # Verificar si activar boss final
     lw $t1, FINAL_SHIP_TRIGGER
     blt $t0, $t1, continue_normal_game
     
-    # Activar barco final si no está activo
-    lw $t2, final_ship_active
+    # Activar boss si no está activo y no fue derrotado
+    lw $t2, boss_active
     bnez $t2, continue_normal_game
     
-    li $t2, 1
-    sw $t2, final_ship_active    
+    lw $t3, boss_health
+    bnez $t3, activate_boss    # Si tiene vida, activar
     
-    # Mostrar mensaje
+    # Si boss fue derrotado (health=0), activar barco final
+    lw $t4, final_ship_active
+    bnez $t4, continue_normal_game
+    
+    li $t4, 1
+    sw $t4, final_ship_active
+    
     li $v0, 4
     la $a0, msg_final_ship
+    syscall
+    j continue_normal_game
+    
+activate_boss:
+    li $t2, 1
+    sw $t2, boss_active
+    
+    li $v0, 4
+    la $a0, msg_boss_appears
     syscall
 
 continue_normal_game:
     jal scroll_sea
     jal process_input
     
-    # Siempre actualizar enemigos y balas existentes
+    # SIEMPRE actualizar enemigos y balas (incluso con boss)
     jal update_enemies
     jal update_bullets
     
-    # Solo spawnear nuevos enemigos si el barco final NO está activo
+    # Actualizar boss si está activo
+    lw $t0, boss_active
+    beqz $t0, no_boss_active
+    jal update_boss
+    j skip_enemy_spawn
+    
+no_boss_active:
+    # Solo spawnear nuevos enemigos si boss Y barco final NO están activos
     lw $t0, final_ship_active
     bnez $t0, skip_enemy_spawn
     jal spawn_enemy
+    
 skip_enemy_spawn:
     
     jal update_player_bullets
@@ -395,7 +474,14 @@ skip_final_ship:
     jal draw_enemies
     jal draw_bullets
     jal draw_player_bullets
-    jal draw_player_new        # Redibujar jugador encima de todo
+    
+    # DIBUJAR BOSS AL FINAL (encima de todo)
+    lw $t0, boss_active
+    beqz $t0, skip_boss_draw
+    jal draw_boss
+skip_boss_draw:
+    
+    jal draw_player_new
     jal delay
     j game_loop
 
@@ -1909,6 +1995,31 @@ check_bullet_enemy_collisions:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     
+    lw $t0, boss_active
+    beqz $t0, check_normal_enemies
+    
+    la $a0, player_bullet_0
+    jal test_bullet_hit_boss
+    la $a0, player_bullet_1
+    jal test_bullet_hit_boss
+    la $a0, player_bullet_2
+    jal test_bullet_hit_boss
+    la $a0, player_bullet_3
+    jal test_bullet_hit_boss
+    la $a0, player_bullet_4
+    jal test_bullet_hit_boss
+    la $a0, player_bullet_5
+    jal test_bullet_hit_boss
+    la $a0, player_bullet_6
+    jal test_bullet_hit_boss
+    la $a0, player_bullet_7
+    jal test_bullet_hit_boss
+    la $a0, player_bullet_8
+    jal test_bullet_hit_boss
+    la $a0, player_bullet_9
+    jal test_bullet_hit_boss
+
+check_normal_enemies:
     # Verificar bullet_0
     la $a0, player_bullet_0
     la $a1, enemy_0
@@ -2159,6 +2270,113 @@ test_end:
     lw $t1, 16($sp)
     lw $t0, 12($sp)
     lw $a1, 8($sp)
+    lw $a0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 32
+    jr $ra
+
+# ===== DETECTAR COLISIÓN BALA-BOSS =====
+test_bullet_hit_boss:
+    addi $sp, $sp, -32
+    sw $ra, 0($sp)
+    sw $a0, 4($sp)
+    sw $t0, 12($sp)
+    sw $t1, 16($sp)
+    sw $t2, 20($sp)
+    sw $t3, 24($sp)
+    sw $t8, 28($sp)
+    
+    move $t8, $a0
+    
+    # Verificar si bala está activa
+    lw $t0, 0($t8)
+    beqz $t0, test_boss_end
+    
+    # Obtener posiciones
+    lw $t0, 4($t8)          # bullet_x
+    lw $t1, 8($t8)          # bullet_y
+    lw $t2, boss_x
+    lw $t3, boss_y
+    
+    # Colisión AABB
+    lw $t4, PLAYER_BULLET_WIDTH
+    add $t4, $t0, $t4
+    
+    lw $t5, BOSS_SIZE
+    add $t5, $t2, $t5
+    
+    blt $t4, $t2, test_boss_end
+    blt $t5, $t0, test_boss_end
+    
+    lw $t4, PLAYER_BULLET_HEIGHT
+    add $t4, $t1, $t4
+    
+    lw $t5, BOSS_SIZE
+    add $t5, $t3, $t5
+    
+    blt $t4, $t3, test_boss_end
+    blt $t5, $t1, test_boss_end
+    
+    # ¡COLISIÓN!
+    # Reducir vida del boss
+    lw $t6, boss_health
+    addi $t6, $t6, -1
+    sw $t6, boss_health
+    
+    # Borrar bala
+    lw $a0, 12($t8)
+    lw $a1, 16($t8)
+    
+    addi $sp, $sp, -4
+    sw $t8, 0($sp)
+    jal erase_player_bullet
+    lw $t8, 0($sp)
+    addi $sp, $sp, 4
+    
+    sw $zero, 0($t8)
+    
+    # Verificar si boss murió
+    lw $t6, boss_health
+    bnez $t6, test_boss_end
+    
+    # Boss derrotado!
+    li $v0, 4
+    la $a0, msg_boss_defeated
+    syscall
+    
+    # Sumar 1000 puntos
+    lw $t7, player_score
+    lw $t9, BOSS_POINTS
+    add $t7, $t7, $t9
+    sw $t7, player_score
+    
+    li $v0, 4
+    la $a0, msg_score
+    syscall
+    li $v0, 1
+    lw $a0, player_score
+    syscall
+    li $v0, 4
+    la $a0, newline
+    syscall
+    
+    # Desactivar boss
+    sw $zero, boss_active
+    
+    # ACTIVAR BARCO FINAL
+    li $t9, 1
+    sw $t9, final_ship_active
+    
+    li $v0, 4
+    la $a0, msg_final_ship
+    syscall
+
+test_boss_end:
+    lw $t8, 28($sp)
+    lw $t3, 24($sp)
+    lw $t2, 20($sp)
+    lw $t1, 16($sp)
+    lw $t0, 12($sp)
     lw $a0, 4($sp)
     lw $ra, 0($sp)
     addi $sp, $sp, 32
@@ -3096,6 +3314,375 @@ move_right:
     sw $t0, player_x
 
 no_input:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== ACTUALIZAR BOSS =====
+update_boss:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    # Guardar posición anterior
+    lw $t0, boss_x
+    lw $t1, boss_y
+    sw $t0, boss_old_x
+    sw $t1, boss_old_y
+    
+    # Incrementar contador de movimiento
+    lw $t2, boss_move_counter
+    addi $t2, $t2, 1
+    sw $t2, boss_move_counter
+    
+    lw $t3, BOSS_MOVE_RATE
+    blt $t2, $t3, boss_check_shoot
+    
+    # Resetear contador
+    sw $zero, boss_move_counter
+    
+    # Mover verticalmente hacia abajo hasta posición Y=5
+    li $t4, 5
+    bge $t1, $t4, boss_move_horizontal
+    
+    lw $t5, BOSS_MOVE_SPEED
+    add $t1, $t1, $t5
+    sw $t1, boss_y
+    j boss_check_shoot
+    
+boss_move_horizontal:
+    # Mover horizontalmente
+    lw $t5, boss_direction
+    lw $t6, BOSS_MOVE_SPEED
+    
+    bltz $t5, boss_move_left_dir
+    add $t0, $t0, $t6
+    j boss_check_bounds
+    
+boss_move_left_dir:
+    sub $t0, $t0, $t6
+    
+boss_check_bounds:
+    # Verificar límites (0 a 64-27=37)
+    bltz $t0, boss_bounce_right
+    li $t7, 37
+    bgt $t0, $t7, boss_bounce_left
+    sw $t0, boss_x
+    j boss_check_shoot
+    
+boss_bounce_right:
+    li $t0, 0
+    sw $t0, boss_x
+    li $t5, 1
+    sw $t5, boss_direction
+    j boss_check_shoot
+    
+boss_bounce_left:
+    li $t0, 37
+    sw $t0, boss_x
+    li $t5, -1
+    sw $t5, boss_direction
+
+boss_check_shoot:
+    # Sistema de disparo
+    lw $t0, boss_shoot_counter
+    addi $t0, $t0, 1
+    sw $t0, boss_shoot_counter
+    
+    lw $t1, BOSS_SHOOT_RATE
+    blt $t0, $t1, boss_no_shoot
+    
+    # Resetear contador y disparar
+    sw $zero, boss_shoot_counter
+    jal boss_shoot
+
+boss_no_shoot:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== BOSS DISPARA 3 BALAS =====
+boss_shoot:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    # Posición del boss
+    lw $t4, boss_x
+    lw $t5, boss_y
+    
+    # Calcular Y de disparo (debajo del boss)
+    addi $t5, $t5, 27
+    addi $t5, $t5, 2
+    
+    # BALA IZQUIERDA (desde x + 3)
+    la $t1, bullet_0
+    lw $t2, 0($t1)
+    bnez $t2, try_bullet_1_left
+    
+    # Slot libre para bala izquierda
+    li $t3, 1
+    sw $t3, 0($t1)
+    
+    addi $t6, $t4, 3        # Posición x izquierda
+    sw $t6, 4($t1)
+    sw $t5, 8($t1)
+    sw $t6, 12($t1)
+    sw $t5, 16($t1)
+    j boss_shoot_center
+
+try_bullet_1_left:
+    la $t1, bullet_1
+    lw $t2, 0($t1)
+    bnez $t2, boss_shoot_center
+    
+    li $t3, 1
+    sw $t3, 0($t1)
+    
+    addi $t6, $t4, 3
+    sw $t6, 4($t1)
+    sw $t5, 8($t1)
+    sw $t6, 12($t1)
+    sw $t5, 16($t1)
+
+boss_shoot_center:
+    # BALA CENTRAL (desde x + 13, el centro)
+    la $t1, bullet_2
+    lw $t2, 0($t1)
+    bnez $t2, try_bullet_3_center
+    
+    # Slot libre para bala central
+    li $t3, 1
+    sw $t3, 0($t1)
+    
+    addi $t6, $t4, 12       # Centro del boss (27/2 ? 13)
+    sw $t6, 4($t1)
+    sw $t5, 8($t1)
+    sw $t6, 12($t1)
+    sw $t5, 16($t1)
+    j boss_shoot_right
+
+try_bullet_3_center:
+    la $t1, bullet_3
+    lw $t2, 0($t1)
+    bnez $t2, boss_shoot_right
+    
+    li $t3, 1
+    sw $t3, 0($t1)
+    
+    addi $t6, $t4, 12
+    sw $t6, 4($t1)
+    sw $t5, 8($t1)
+    sw $t6, 12($t1)
+    sw $t5, 16($t1)
+
+boss_shoot_right:
+    # BALA DERECHA (desde x + 21)
+    la $t1, bullet_4
+    lw $t2, 0($t1)
+    bnez $t2, try_bullet_0_right
+    
+    # Slot libre para bala derecha
+    li $t3, 1
+    sw $t3, 0($t1)
+    
+    addi $t6, $t4, 21       # Posición x derecha
+    sw $t6, 4($t1)
+    sw $t5, 8($t1)
+    sw $t6, 12($t1)
+    sw $t5, 16($t1)
+    j boss_shoot_done
+
+try_bullet_0_right:
+    # Si bullet_4 está ocupada, intentar usar bullet_0 para la derecha
+    la $t1, bullet_0
+    lw $t2, 0($t1)
+    bnez $t2, boss_shoot_done
+    
+    li $t3, 1
+    sw $t3, 0($t1)
+    
+    addi $t6, $t4, 21
+    sw $t6, 4($t1)
+    sw $t5, 8($t1)
+    sw $t6, 12($t1)
+    sw $t5, 16($t1)
+
+boss_shoot_done:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== DIBUJAR BOSS =====
+draw_boss:
+    addi $sp, $sp, -20
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    
+    # Borrar posición anterior
+    lw $a0, boss_old_x
+    lw $a1, boss_old_y
+    jal erase_boss
+    
+    # Dibujar en nueva posición
+    lw $a0, boss_x
+    lw $a1, boss_y
+    jal draw_boss_at
+    
+    lw $s3, 16($sp)
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr $ra
+
+# ===== BORRAR BOSS =====
+erase_boss:
+    addi $sp, $sp, -20
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    
+    move $s0, $a0
+    move $s1, $a1
+    lw $s2, BOSS_SIZE
+    
+    li $t5, 0
+    
+erase_boss_y:
+    bge $t5, $s2, erase_boss_done
+    
+    li $t6, 0
+    
+erase_boss_x:
+    bge $t6, $s2, erase_boss_next_y
+    
+    # Calcular posición absoluta
+    add $a0, $s0, $t6
+    add $a1, $s1, $t5
+    
+    # Verificar que esté en pantalla
+    bltz $a1, skip_erase_boss_pixel
+    li $t9, 64
+    bge $a1, $t9, skip_erase_boss_pixel
+    
+    addi $sp, $sp, -12
+    sw $t5, 0($sp)
+    sw $t6, 4($sp)
+    sw $ra, 8($sp)
+    
+    jal get_background_color
+    move $s6, $v0
+    
+    lw $ra, 8($sp)
+    lw $t6, 4($sp)
+    lw $t5, 0($sp)
+    addi $sp, $sp, 12
+    
+    add $s7, $s1, $t5
+    sll $s7, $s7, 6
+    add $s7, $s7, $s0
+    add $s7, $s7, $t6
+    sll $s7, $s7, 2
+    add $s7, $gp, $s7
+    
+    sw $s6, 0($s7)
+
+skip_erase_boss_pixel:
+    addi $t6, $t6, 1
+    j erase_boss_x
+
+erase_boss_next_y:
+    addi $t5, $t5, 1
+    j erase_boss_y
+
+erase_boss_done:
+    lw $s3, 16($sp)
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr $ra
+
+# ===== DIBUJAR BOSS EN POSICIÓN =====
+draw_boss_at:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    move $t0, $a0
+    move $t1, $a1
+    lw $t2, BOSS_SIZE
+    
+    la $s0, boss_sprite
+    lw $s1, boss_green_light
+    lw $s2, boss_green_dark
+    lw $s3, boss_white
+    
+    li $t4, 0
+    
+draw_boss_y:
+    bge $t4, $t2, draw_boss_done
+    
+    add $t5, $t1, $t4
+    li $t6, 64
+    bge $t5, $t6, draw_boss_next_y
+    bltz $t5, draw_boss_next_y
+    
+    li $t6, 0
+    
+draw_boss_x:
+    bge $t6, $t2, draw_boss_next_y
+    
+    # Calcular índice sprite (Y * 27 + X)
+    li $t7, 27
+    mul $t8, $t4, $t7
+    add $t8, $t8, $t6
+    add $t9, $s0, $t8
+    lb $t9, 0($t9)
+    
+    beqz $t9, skip_boss_pixel
+    
+    li $a0, 1
+    beq $t9, $a0, use_boss_green_light
+    li $a0, 2
+    beq $t9, $a0, use_boss_green_dark
+    li $a0, 3
+    beq $t9, $a0, use_boss_white
+    j skip_boss_pixel
+    
+use_boss_green_light:
+    move $a1, $s1
+    j draw_boss_pixel
+use_boss_green_dark:
+    move $a1, $s2
+    j draw_boss_pixel
+use_boss_white:
+    move $a1, $s3
+    
+draw_boss_pixel:
+    add $a2, $t1, $t4
+    sll $a2, $a2, 6
+    add $a2, $a2, $t0
+    add $a2, $a2, $t6
+    sll $a2, $a2, 2
+    add $a2, $gp, $a2
+    
+    sw $a1, 0($a2)
+    
+skip_boss_pixel:
+    addi $t6, $t6, 1
+    j draw_boss_x
+
+draw_boss_next_y:
+    addi $t4, $t4, 1
+    j draw_boss_y
+
+draw_boss_done:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra

@@ -1,4 +1,4 @@
-# Game 1942 - Version 3.0 
+# Game 1942 - Version 4.0 
 
 .data
     .align 2
@@ -45,6 +45,23 @@
     ENEMY_SPAWN_RATE:    .word 50
     ENEMY_SHOOT_RATE:    .word 30
     
+    # Sistema de Power-Up
+pow_active:          .word 0        # Si hay un POW en pantalla
+pow_x:               .word 0
+pow_y:               .word 0
+pow_old_x:           .word 0
+pow_old_y:           .word 0
+POW_SIZE:            .word 7        # 7x7 píxeles
+POW_SPEED:           .word 1        # Velocidad de caída
+pow_move_counter:    .word 0
+POW_MOVE_RATE:       .word 5        # Se mueve cada 2 frames
+pow_spawn_counter:   .word 0        # Contador de enemigos para spawn
+POW_SPAWN_EVERY:     .word 5       # Cada 20 enemigos
+
+# Sistema de doble disparo
+double_shot_active:  .word 0        # Si el power-up está activo
+double_shot_ammo:    .word 0        # Disparos restantes con doble bala
+    
     ENEMY_HORIZONTAL_SPEED: .word 1
     ENEMY_DIRECTION_CHANGE_RATE: .word 10   # Cada 60 frames cambia dirección
     
@@ -73,7 +90,34 @@
     final_ship_y_offset:   .word -48     # Empieza arriba (fuera de pantalla, negativo)
     final_ship_scroll_speed: .word 1     # Velocidad de aparición
     game_timer:            .word 0       
-    FINAL_SHIP_TRIGGER:    .word 6000
+    FINAL_SHIP_TRIGGER:    .word 600
+    
+    # Sistema de Boss Final
+    boss_active:         .word 0
+    boss_x:              .word 18           # Centrado (64-27)/2 ? 18
+    boss_y:              .word -27          # Empieza arriba (fuera de pantalla)
+    boss_old_x:          .word 18
+    boss_old_y:          .word -27
+    boss_health:         .word 15           # 15 golpes para matarlo
+    BOSS_MAX_HEALTH:     .word 15
+    BOSS_SIZE:           .word 27
+    BOSS_MOVE_SPEED:     .word 1
+    boss_move_counter:   .word 0
+    BOSS_MOVE_RATE:      .word 5            # Se mueve cada 5 frames
+    boss_direction:      .word 1            # 1=derecha, -1=izquierda
+    BOSS_POINTS:         .word 1000
+    boss_shoot_counter:  .word 0
+    BOSS_SHOOT_RATE:     .word 60            # Dispara cada 25 frames
+
+    # Colores del boss
+    boss_green_light:    .word 0x00AA00     # Verde claro
+    boss_green_dark:     .word 0x005000     # Verde oscuro  
+    boss_white:          .word 0xFFFFFF     # Blanco (hélices)
+    
+    # Colores del HUD
+    hud_white:       .word 0x00FFFFFF  # Blanco (números)
+    hud_red:         .word 0x00FF0000  # Rojo (corazones)
+    hud_black:       .word 0x00000000  # Negro (contorno)
     
     # Paleta de colores
     sea_colors:
@@ -111,6 +155,107 @@
     enemy3_yellow:      .word 0x00F0BC3C  # Amarillo (cuerpo)
     enemy3_red:         .word 0x00D82800  # Rojo (detalles)
     enemy3_white:       .word 0x00FCFCFC  # Blanco (cabina)
+    
+    # Colores del power-up POW
+pow_green_light:  .word 0x0080D010  # Verde claro (relleno)
+pow_green_dark:   .word 0x00009400  # Verde oscuro (contorno)
+
+    # Sprites de números 3x5 (0=transparente, 1=blanco)
+    .align 2
+    digit_0:
+    .byte 1,1,1
+.byte 1,0,1
+.byte 1,0,1
+.byte 1,0,1
+.byte 1,1,1
+
+.align 2
+digit_1:
+.byte 0,1,0
+.byte 1,1,0
+.byte 0,1,0
+.byte 0,1,0
+.byte 1,1,1
+
+.align 2
+digit_2:
+.byte 1,1,1
+.byte 0,0,1
+.byte 1,1,1
+.byte 1,0,0
+.byte 1,1,1
+
+.align 2
+digit_3:
+.byte 1,1,1
+.byte 0,0,1
+.byte 1,1,1
+.byte 0,0,1
+.byte 1,1,1
+
+.align 2
+digit_4:
+.byte 1,0,1
+.byte 1,0,1
+.byte 1,1,1
+.byte 0,0,1
+.byte 0,0,1
+
+.align 2
+digit_5:
+.byte 1,1,1
+.byte 1,0,0
+.byte 1,1,1
+.byte 0,0,1
+.byte 1,1,1
+
+.align 2
+digit_6:
+.byte 1,1,1
+.byte 1,0,0
+.byte 1,1,1
+.byte 1,0,1
+.byte 1,1,1
+
+.align 2
+digit_7:
+.byte 1,1,1
+.byte 0,0,1
+.byte 0,1,0
+.byte 0,1,0
+.byte 0,1,0
+
+.align 2
+digit_8:
+.byte 1,1,1
+.byte 1,0,1
+.byte 1,1,1
+.byte 1,0,1
+.byte 1,1,1
+
+.align 2
+digit_9:
+.byte 1,1,1
+.byte 1,0,1
+.byte 1,1,1
+.byte 0,0,1
+.byte 1,1,1
+    
+    # Sprite del corazón 7x7 (0=transparente, 1=rojo)
+    # Sprite del corazón 5x5 (0=transparente, 1=rojo)
+.align 2
+heart_sprite:
+.byte 1,1,0,1,1
+.byte 1,1,1,1,1
+.byte 0,1,1,1,0
+.byte 0,0,1,0,0
+.byte 0,0,0,0,0
+    
+    # Tabla de punteros a sprites de dígitos
+   .align 2
+   digit_table:
+   .word digit_0, digit_1, digit_2, digit_3, digit_4
+   .word digit_5, digit_6, digit_7, digit_8, digit_9
     
     # Array de balas enemigas (cada bala son 5 words: active, x, y, old_x, old_y)
     .align 4
@@ -199,6 +344,49 @@
     .byte 0,1,1,1,3,1,1,1,0
     .byte 0,0,0,1,1,1,0,0,0
     .byte 0,0,1,1,2,1,1,0,0
+    
+     # Sprite del POW 7x7 - Estrella cruz
+.align 2
+pow_sprite:
+.byte 0,0,0,2,0,0,0
+.byte 0,0,2,2,2,0,0
+.byte 0,2,1,2,1,2,0
+.byte 2,2,2,1,2,2,2
+.byte 0,2,1,2,1,2,0
+.byte 0,0,2,2,2,0,0
+.byte 0,0,0,2,0,0,0
+    
+    # Sprite del Boss 27x27 (0=transparente, 1=verde claro, 2=verde oscuro, 3=blanco)
+    # Sprite del Boss 27x27 (0=transparente, 1=verde claro, 2=verde oscuro, 3=blanco)
+.align 2
+boss_sprite:
+.byte 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,1,1,1,1,1,1,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,1,1,1,1,1,1,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,1,1,1,1,1,1,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,1,1,1,2,2,2,1,1,1,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,1,1,1,2,2,2,1,1,1,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,1,1,1,2,2,2,1,1,1,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0
+.byte 0,0,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,0,0,0
+.byte 0,0,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,0,0,0
+.byte 0,0,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,0,0,0
+.byte 1,1,1,1,1,1,1,1,1,1,1,1,3,3,3,1,1,1,1,1,1,1,1,1,1,1,1
+.byte 1,1,1,1,1,1,1,1,1,1,1,1,3,3,3,1,1,1,1,1,1,1,1,1,1,1,1
+.byte 1,1,1,1,1,1,1,1,1,1,1,1,3,3,3,1,1,1,1,1,1,1,1,1,1,1,1
+.byte 0,0,1,1,1,1,1,1,1,1,1,1,3,3,3,1,1,1,1,1,1,1,1,1,0,0,0
+.byte 0,0,1,1,1,1,1,1,1,1,1,1,3,3,3,1,1,1,1,1,1,1,1,1,0,0,0
+.byte 0,0,1,1,1,1,1,1,1,1,1,1,3,3,3,1,1,1,1,1,1,1,1,1,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,1,1,1,1,1,1,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,1,1,1,1,1,1,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,1,1,1,1,1,1,0,0,0,0,0,0
     
     # Sprite del portaaviones 32x48 (0=mar, 1=gris, 2=gris claro, 3=negro)
     .align 2
@@ -310,6 +498,8 @@
     msg_game_over:   .asciiz "\n*** GAME OVER ***\n"
     msg_victory:     .asciiz "\n*** ¡VICTORIA! Has llegado al portaaviones final! ***\n"
     msg_final_ship:  .asciiz "\n¡Portaaviones final a la vista!\n"
+    msg_boss_appears: .asciiz "\n¡BOSS FINAL DETECTADO!\n"
+    msg_boss_defeated: .asciiz "\n¡BOSS DERROTADO!\n"
     newline:         .asciiz "\n"
     
 .text
@@ -339,6 +529,9 @@ main:
     # Dibujar jugador al inicio
     jal draw_player_new
     
+    # DIBUJAR HUD AL INICIO
+    jal draw_hud
+    
 game_loop:
     lw $t0, game_over_flag
     bnez $t0, game_over
@@ -351,39 +544,68 @@ game_loop:
     addi $t0, $t0, 1
     sw $t0, game_timer
     
-    # Verificar si activar barco final
+    # Verificar si activar boss final
     lw $t1, FINAL_SHIP_TRIGGER
     blt $t0, $t1, continue_normal_game
     
-    # Activar barco final si no está activo
-    lw $t2, final_ship_active
+    # Activar boss si no está activo y no fue derrotado
+    lw $t2, boss_active
     bnez $t2, continue_normal_game
     
-    li $t2, 1
-    sw $t2, final_ship_active    
+    lw $t3, boss_health
+    bnez $t3, activate_boss    # Si tiene vida, activar
     
-    # Mostrar mensaje
+    # Si boss fue derrotado (health=0), activar barco final
+    lw $t4, final_ship_active
+    bnez $t4, continue_normal_game
+    
+    li $t4, 1
+    sw $t4, final_ship_active
+    
     li $v0, 4
     la $a0, msg_final_ship
+    syscall
+    j continue_normal_game
+    
+activate_boss:
+    li $t2, 1
+    sw $t2, boss_active
+    
+    li $v0, 4
+    la $a0, msg_boss_appears
     syscall
 
 continue_normal_game:
     jal scroll_sea
     jal process_input
     
-    # Siempre actualizar enemigos y balas existentes
+    # SIEMPRE actualizar enemigos y balas (incluso con boss)
     jal update_enemies
     jal update_bullets
     
-    # Solo spawnear nuevos enemigos si el barco final NO está activo
+    # Actualizar power-up
+    jal update_pow
+    
+    # Actualizar boss si está activo
+    lw $t0, boss_active
+    beqz $t0, no_boss_active
+    jal update_boss
+    j skip_enemy_spawn
+    
+no_boss_active:
+    # Solo spawnear nuevos enemigos si boss Y barco final NO están activos
     lw $t0, final_ship_active
     bnez $t0, skip_enemy_spawn
     jal spawn_enemy
+    
 skip_enemy_spawn:
     
     jal update_player_bullets
     jal check_collisions
     jal check_bullet_enemy_collisions
+    
+    # Actualizar power-up
+    jal update_pow
     
     # Actualizar y dibujar barco final si está activo
     lw $t0, final_ship_active
@@ -395,7 +617,21 @@ skip_final_ship:
     jal draw_enemies
     jal draw_bullets
     jal draw_player_bullets
-    jal draw_player_new        # Redibujar jugador encima de todo
+    
+    # Dibujar power-up
+    jal draw_pow
+    
+    # DIBUJAR BOSS AL FINAL (encima de todo)
+    lw $t0, boss_active
+    beqz $t0, skip_boss_draw
+    jal draw_boss
+skip_boss_draw:
+    
+    jal draw_player_new
+    
+    # DIBUJAR HUD (lo último, encima de todo)
+    jal draw_hud
+    
     jal delay
     j game_loop
 
@@ -677,6 +913,35 @@ spawn_enemy_in_slot:
     li $t2, 1
     sw $t2, 0($t0)
     
+    # GUARDAR $t0 (puntero del enemigo) antes de trabajar con POW
+    move $s7, $t0           # <-- GUARDAR AQUÍ
+    
+    # Incrementar contador de power-up
+    lw $t8, pow_spawn_counter
+    addi $t8, $t8, 1
+    sw $t8, pow_spawn_counter
+    
+    # Verificar si spawear POW
+    lw $t9, POW_SPAWN_EVERY
+    bne $t8, $t9, skip_pow_spawn
+    
+    # Resetear contador
+    sw $zero, pow_spawn_counter
+    
+    # Spawear POW si no hay uno activo
+    lw $a3, pow_active
+    bnez $a3, skip_pow_spawn
+    
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    jal spawn_pow
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    
+skip_pow_spawn:
+    # RESTAURAR $t0 (puntero del enemigo)
+    move $t0, $s7           # <-- RESTAURAR AQUÍ
+    
     # Posición X aleatoria
     li $v0, 30
     syscall
@@ -730,6 +995,301 @@ spawn_enemy_done:
     addi $sp, $sp, 4
     jr $ra
     
+    
+# ===== SPAWEAR POWER-UP POW =====
+spawn_pow:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    # Activar POW
+    li $t0, 1
+    sw $t0, pow_active
+    
+    # Posición X aleatoria
+    li $v0, 30
+    syscall
+    move $t1, $a0
+    andi $t1, $t1, 0x3F     # 0-63
+    
+    # Ajustar para que quepa (64 - 7 = 57)
+    li $t2, 57
+    bgt $t1, $t2, pow_center
+    j pow_set_pos
+    
+pow_center:
+    li $t1, 28              # Centrar
+    
+pow_set_pos:
+    sw $t1, pow_x
+    sw $t1, pow_old_x
+    li $t3, 0
+    sw $t3, pow_y
+    sw $t3, pow_old_y
+    sw $zero, pow_move_counter
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== ACTUALIZAR POWER-UP POW =====
+update_pow:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    lw $t0, pow_active
+    beqz $t0, update_pow_done
+    
+    # Incrementar contador de movimiento
+    lw $t1, pow_move_counter
+    addi $t1, $t1, 1
+    sw $t1, pow_move_counter
+    
+    # Verificar si debe moverse
+    lw $t2, POW_MOVE_RATE
+    blt $t1, $t2, update_pow_done
+    
+    # Resetear contador
+    sw $zero, pow_move_counter
+    
+    # Guardar posición anterior
+    lw $t3, pow_x
+    lw $t4, pow_y
+    sw $t3, pow_old_x
+    sw $t4, pow_old_y
+    
+    # Mover hacia abajo
+    lw $t5, POW_SPEED
+    add $t4, $t4, $t5
+    sw $t4, pow_y
+    
+    # Verificar si sale de pantalla
+    lw $t6, SCREEN_HEIGHT
+    bge $t4, $t6, deactivate_pow
+    
+    # Verificar colisión con jugador
+    jal check_pow_collision
+    j update_pow_done
+
+deactivate_pow:
+    # Borrar POW antes de desactivar
+    lw $a0, pow_old_x
+    lw $a1, pow_old_y
+    jal erase_pow
+    
+    sw $zero, pow_active
+
+update_pow_done:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra    
+
+# ===== VERIFICAR COLISIÓN JUGADOR-POW =====
+check_pow_collision:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    lw $t0, pow_x
+    lw $t1, pow_y
+    lw $t2, player_x
+    lw $t3, player_y
+    
+    # AABB collision
+    lw $t4, PLAYER_SIZE
+    add $t4, $t2, $t4       # player_right
+    blt $t4, $t0, no_pow_collision
+    
+    lw $t5, POW_SIZE
+    add $t5, $t0, $t5       # pow_right
+    blt $t5, $t2, no_pow_collision
+    
+    lw $t4, PLAYER_HEIGHT
+    add $t4, $t3, $t4       # player_bottom
+    blt $t4, $t1, no_pow_collision
+    
+    lw $t5, POW_SIZE
+    add $t5, $t1, $t5       # pow_bottom
+    blt $t5, $t3, no_pow_collision
+    
+    # ¡COLISIÓN! Activar power-up
+    li $t6, 1
+    sw $t6, double_shot_active
+    li $t7, 5
+    sw $t7, double_shot_ammo
+    
+    # Borrar POW
+    lw $a0, pow_old_x
+    lw $a1, pow_old_y
+    jal erase_pow
+    
+    # Desactivar POW
+    sw $zero, pow_active
+
+no_pow_collision:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra            
+
+# ===== BORRAR POW =====
+erase_pow:
+    addi $sp, $sp, -20
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    
+    move $s0, $a0
+    move $s1, $a1
+    lw $s2, POW_SIZE
+    
+    li $t5, 0
+    
+erase_pow_y:
+    bge $t5, $s2, erase_pow_done
+    
+    li $t6, 0
+    
+erase_pow_x:
+    bge $t6, $s2, erase_pow_next_y
+    
+    # Calcular posición absoluta
+    add $a0, $s0, $t6
+    add $a1, $s1, $t5
+    
+    # Guardar registros
+    addi $sp, $sp, -12
+    sw $t5, 0($sp)
+    sw $t6, 4($sp)
+    sw $ra, 8($sp)
+    
+    # Obtener color de fondo
+    jal get_background_color
+    move $s3, $v0
+    
+    # Restaurar
+    lw $ra, 8($sp)
+    lw $t6, 4($sp)
+    lw $t5, 0($sp)
+    addi $sp, $sp, 12
+    
+    # Dibujar
+    add $t7, $s1, $t5
+    sll $t7, $t7, 6
+    add $t7, $t7, $s0
+    add $t7, $t7, $t6
+    sll $t7, $t7, 2
+    add $t7, $gp, $t7
+    
+    sw $s3, 0($t7)
+    
+    addi $t6, $t6, 1
+    j erase_pow_x
+
+erase_pow_next_y:
+    addi $t5, $t5, 1
+    j erase_pow_y
+
+erase_pow_done:
+    lw $s3, 16($sp)
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr $ra                                    
+
+# ===== DIBUJAR POW =====
+draw_pow:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    lw $t0, pow_active
+    beqz $t0, draw_pow_done
+    
+    # Borrar posición anterior
+    lw $a0, pow_old_x
+    lw $a1, pow_old_y
+    jal erase_pow
+    
+    # Dibujar en nueva posición
+    lw $a0, pow_x
+    lw $a1, pow_y
+    jal draw_pow_at
+
+draw_pow_done:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== DIBUJAR POW EN POSICIÓN =====
+draw_pow_at:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    move $t0, $a0
+    move $t1, $a1
+    lw $t2, POW_SIZE
+    
+    la $s0, pow_sprite
+    lw $s1, pow_green_dark      # Verde oscuro
+    lw $s2, pow_green_light     # Verde claro
+    
+    li $t4, 0
+    
+draw_pow_y:
+    bge $t4, $t2, draw_pow_done_loop
+    
+    li $t5, 0
+    
+draw_pow_x:
+    bge $t5, $t2, draw_pow_next_y
+    
+    # Obtener índice sprite (Y * 7 + X)
+    li $t6, 7
+    mul $t7, $t4, $t6
+    add $t7, $t7, $t5
+    add $t8, $s0, $t7
+    lb $t8, 0($t8)
+    
+    # Si es 0, transparente
+    beqz $t8, skip_pow_pixel
+    
+    # Seleccionar color
+    li $t9, 1
+    beq $t8, $t9, use_pow_dark
+    li $t9, 2
+    beq $t8, $t9, use_pow_light
+    j skip_pow_pixel
+    
+use_pow_dark:
+    move $a2, $s1
+    j draw_pow_pixel
+use_pow_light:
+    move $a2, $s2
+    
+draw_pow_pixel:
+    add $a3, $t1, $t4
+    sll $a3, $a3, 6
+    add $a3, $a3, $t0
+    add $a3, $a3, $t5
+    sll $a3, $a3, 2
+    add $a3, $gp, $a3
+    
+    sw $a2, 0($a3)
+    
+skip_pow_pixel:
+    addi $t5, $t5, 1
+    j draw_pow_x
+
+draw_pow_next_y:
+    addi $t4, $t4, 1
+    j draw_pow_y
+
+draw_pow_done_loop:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra                                                                                                            
+                                                                                                                                                                                                                                                                                                                                    
 # ===== ACTUALIZAR ENEMIGOS =====
 update_enemies:
     addi $sp, $sp, -4
@@ -1426,7 +1986,161 @@ spawn_player_bullet:
     lw $t0, player_can_shoot
     beqz $t0, spawn_player_done
     
-    # Buscar slot libre
+    # Verificar si tiene power-up activo
+    lw $t9, double_shot_active
+    beqz $t9, spawn_single_bullet
+    
+    # DOBLE DISPARO
+    # Buscar dos slots libres
+    la $t0, player_bullet_0
+    lw $t1, 0($t0)
+    beqz $t1, found_first_slot
+    
+    la $t0, player_bullet_1
+    lw $t1, 0($t0)
+    beqz $t1, found_first_slot
+    
+    la $t0, player_bullet_2
+    lw $t1, 0($t0)
+    beqz $t1, found_first_slot
+    
+    la $t0, player_bullet_3
+    lw $t1, 0($t0)
+    beqz $t1, found_first_slot
+    
+    la $t0, player_bullet_4
+    lw $t1, 0($t0)
+    beqz $t1, found_first_slot
+    
+    la $t0, player_bullet_5
+    lw $t1, 0($t0)
+    beqz $t1, found_first_slot
+    
+    la $t0, player_bullet_6
+    lw $t1, 0($t0)
+    beqz $t1, found_first_slot
+    
+    la $t0, player_bullet_7
+    lw $t1, 0($t0)
+    beqz $t1, found_first_slot
+    
+    la $t0, player_bullet_8
+    lw $t1, 0($t0)
+    beqz $t1, found_first_slot
+    
+    la $t0, player_bullet_9
+    lw $t1, 0($t0)
+    beqz $t1, found_first_slot
+    
+    j spawn_player_done
+
+found_first_slot:
+    # Activar primera bala (IZQUIERDA)
+    li $t2, 1
+    sw $t2, 0($t0)
+    
+    # Calcular posición IZQUIERDA
+    lw $t3, player_x
+    addi $t3, $t3, 3        # Offset izquierdo
+    lw $t4, player_y
+    
+    sw $t3, 4($t0)
+    sw $t4, 8($t0)
+    sw $t3, 12($t0)
+    sw $t4, 16($t0)
+    
+    # Buscar segundo slot para bala DERECHA
+    move $s7, $t0           # Guardar primer slot
+    
+find_second_slot:
+    la $t0, player_bullet_0
+    beq $t0, $s7, try_bullet_1
+    lw $t1, 0($t0)
+    beqz $t1, found_second_slot
+    
+try_bullet_1:
+    la $t0, player_bullet_1
+    beq $t0, $s7, try_bullet_2
+    lw $t1, 0($t0)
+    beqz $t1, found_second_slot
+    
+try_bullet_2:
+    la $t0, player_bullet_2
+    beq $t0, $s7, try_bullet_3
+    lw $t1, 0($t0)
+    beqz $t1, found_second_slot
+    
+try_bullet_3:
+    la $t0, player_bullet_3
+    beq $t0, $s7, try_bullet_4
+    lw $t1, 0($t0)
+    beqz $t1, found_second_slot
+    
+try_bullet_4:
+    la $t0, player_bullet_4
+    beq $t0, $s7, try_bullet_5
+    lw $t1, 0($t0)
+    beqz $t1, found_second_slot
+    
+try_bullet_5:
+    la $t0, player_bullet_5
+    beq $t0, $s7, try_bullet_6
+    lw $t1, 0($t0)
+    beqz $t1, found_second_slot
+    
+try_bullet_6:
+    la $t0, player_bullet_6
+    beq $t0, $s7, try_bullet_7
+    lw $t1, 0($t0)
+    beqz $t1, found_second_slot
+    
+try_bullet_7:
+    la $t0, player_bullet_7
+    beq $t0, $s7, try_bullet_8
+    lw $t1, 0($t0)
+    beqz $t1, found_second_slot
+    
+try_bullet_8:
+    la $t0, player_bullet_8
+    beq $t0, $s7, try_bullet_9
+    lw $t1, 0($t0)
+    beqz $t1, found_second_slot
+    
+try_bullet_9:
+    la $t0, player_bullet_9
+    beq $t0, $s7, decrease_ammo
+    lw $t1, 0($t0)
+    beqz $t1, found_second_slot
+    j decrease_ammo
+
+found_second_slot:
+    # Activar segunda bala (DERECHA)
+    li $t2, 1
+    sw $t2, 0($t0)
+    
+    # Calcular posición DERECHA
+    lw $t3, player_x
+    addi $t3, $t3, 9        # Offset derecho (12 - 3)
+    lw $t4, player_y
+    
+    sw $t3, 4($t0)
+    sw $t4, 8($t0)
+    sw $t3, 12($t0)
+    sw $t4, 16($t0)
+    
+decrease_ammo:
+    # Reducir munición del power-up
+    lw $t5, double_shot_ammo
+    addi $t5, $t5, -1
+    sw $t5, double_shot_ammo
+    
+    # Si se acabó la munición, desactivar power-up
+    bgtz $t5, spawn_player_done
+    sw $zero, double_shot_active
+    j spawn_player_done
+
+spawn_single_bullet:
+    # DISPARO NORMAL (código original)
     la $t0, player_bullet_0
     lw $t1, 0($t0)
     beqz $t1, spawn_player_in_slot
@@ -1477,18 +2191,18 @@ spawn_player_in_slot:
     # Calcular posición (centro del avión)
     lw $t3, player_x
     lw $t4, PLAYER_SIZE
-    srl $t4, $t4, 1         # ancho / 2
+    srl $t4, $t4, 1
     add $t3, $t3, $t4
     lw $t5, PLAYER_BULLET_WIDTH
-    srl $t5, $t5, 1         # bullet_width / 2
-    sub $t3, $t3, $t5       # centrar
+    srl $t5, $t5, 1
+    sub $t3, $t3, $t5
     
     lw $t4, player_y
     
-    sw $t3, 4($t0)          # x
-    sw $t4, 8($t0)          # y
-    sw $t3, 12($t0)         # old_x
-    sw $t4, 16($t0)         # old_y
+    sw $t3, 4($t0)
+    sw $t4, 8($t0)
+    sw $t3, 12($t0)
+    sw $t4, 16($t0)
 
 spawn_player_done:
     lw $ra, 0($sp)
@@ -1909,6 +2623,31 @@ check_bullet_enemy_collisions:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     
+    lw $t0, boss_active
+    beqz $t0, check_normal_enemies
+    
+    la $a0, player_bullet_0
+    jal test_bullet_hit_boss
+    la $a0, player_bullet_1
+    jal test_bullet_hit_boss
+    la $a0, player_bullet_2
+    jal test_bullet_hit_boss
+    la $a0, player_bullet_3
+    jal test_bullet_hit_boss
+    la $a0, player_bullet_4
+    jal test_bullet_hit_boss
+    la $a0, player_bullet_5
+    jal test_bullet_hit_boss
+    la $a0, player_bullet_6
+    jal test_bullet_hit_boss
+    la $a0, player_bullet_7
+    jal test_bullet_hit_boss
+    la $a0, player_bullet_8
+    jal test_bullet_hit_boss
+    la $a0, player_bullet_9
+    jal test_bullet_hit_boss
+
+check_normal_enemies:
     # Verificar bullet_0
     la $a0, player_bullet_0
     la $a1, enemy_0
@@ -2159,6 +2898,113 @@ test_end:
     lw $t1, 16($sp)
     lw $t0, 12($sp)
     lw $a1, 8($sp)
+    lw $a0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 32
+    jr $ra
+
+# ===== DETECTAR COLISIÓN BALA-BOSS =====
+test_bullet_hit_boss:
+    addi $sp, $sp, -32
+    sw $ra, 0($sp)
+    sw $a0, 4($sp)
+    sw $t0, 12($sp)
+    sw $t1, 16($sp)
+    sw $t2, 20($sp)
+    sw $t3, 24($sp)
+    sw $t8, 28($sp)
+    
+    move $t8, $a0
+    
+    # Verificar si bala está activa
+    lw $t0, 0($t8)
+    beqz $t0, test_boss_end
+    
+    # Obtener posiciones
+    lw $t0, 4($t8)          # bullet_x
+    lw $t1, 8($t8)          # bullet_y
+    lw $t2, boss_x
+    lw $t3, boss_y
+    
+    # Colisión AABB
+    lw $t4, PLAYER_BULLET_WIDTH
+    add $t4, $t0, $t4
+    
+    lw $t5, BOSS_SIZE
+    add $t5, $t2, $t5
+    
+    blt $t4, $t2, test_boss_end
+    blt $t5, $t0, test_boss_end
+    
+    lw $t4, PLAYER_BULLET_HEIGHT
+    add $t4, $t1, $t4
+    
+    lw $t5, BOSS_SIZE
+    add $t5, $t3, $t5
+    
+    blt $t4, $t3, test_boss_end
+    blt $t5, $t1, test_boss_end
+    
+    # ¡COLISIÓN!
+    # Reducir vida del boss
+    lw $t6, boss_health
+    addi $t6, $t6, -1
+    sw $t6, boss_health
+    
+    # Borrar bala
+    lw $a0, 12($t8)
+    lw $a1, 16($t8)
+    
+    addi $sp, $sp, -4
+    sw $t8, 0($sp)
+    jal erase_player_bullet
+    lw $t8, 0($sp)
+    addi $sp, $sp, 4
+    
+    sw $zero, 0($t8)
+    
+    # Verificar si boss murió
+    lw $t6, boss_health
+    bnez $t6, test_boss_end
+    
+    # Boss derrotado!
+    li $v0, 4
+    la $a0, msg_boss_defeated
+    syscall
+    
+    # Sumar 1000 puntos
+    lw $t7, player_score
+    lw $t9, BOSS_POINTS
+    add $t7, $t7, $t9
+    sw $t7, player_score
+    
+    li $v0, 4
+    la $a0, msg_score
+    syscall
+    li $v0, 1
+    lw $a0, player_score
+    syscall
+    li $v0, 4
+    la $a0, newline
+    syscall
+    
+    # Desactivar boss
+    sw $zero, boss_active
+    
+    # ACTIVAR BARCO FINAL
+    li $t9, 1
+    sw $t9, final_ship_active
+    
+    li $v0, 4
+    la $a0, msg_final_ship
+    syscall
+
+test_boss_end:
+    lw $t8, 28($sp)
+    lw $t3, 24($sp)
+    lw $t2, 20($sp)
+    lw $t1, 16($sp)
+    lw $t0, 12($sp)
     lw $a0, 4($sp)
     lw $ra, 0($sp)
     addi $sp, $sp, 32
@@ -3100,6 +3946,746 @@ no_input:
     addi $sp, $sp, 4
     jr $ra
 
+# ===== ACTUALIZAR BOSS =====
+update_boss:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    # Guardar posición anterior
+    lw $t0, boss_x
+    lw $t1, boss_y
+    sw $t0, boss_old_x
+    sw $t1, boss_old_y
+    
+    # Incrementar contador de movimiento
+    lw $t2, boss_move_counter
+    addi $t2, $t2, 1
+    sw $t2, boss_move_counter
+    
+    lw $t3, BOSS_MOVE_RATE
+    blt $t2, $t3, boss_check_shoot
+    
+    # Resetear contador
+    sw $zero, boss_move_counter
+    
+    # Mover verticalmente hacia abajo hasta posición Y=5
+    li $t4, 5
+    bge $t1, $t4, boss_move_horizontal
+    
+    lw $t5, BOSS_MOVE_SPEED
+    add $t1, $t1, $t5
+    sw $t1, boss_y
+    j boss_check_shoot
+    
+boss_move_horizontal:
+    # Mover horizontalmente
+    lw $t5, boss_direction
+    lw $t6, BOSS_MOVE_SPEED
+    
+    bltz $t5, boss_move_left_dir
+    add $t0, $t0, $t6
+    j boss_check_bounds
+    
+boss_move_left_dir:
+    sub $t0, $t0, $t6
+    
+boss_check_bounds:
+    # Verificar límites (0 a 64-27=37)
+    bltz $t0, boss_bounce_right
+    li $t7, 37
+    bgt $t0, $t7, boss_bounce_left
+    sw $t0, boss_x
+    j boss_check_shoot
+    
+boss_bounce_right:
+    li $t0, 0
+    sw $t0, boss_x
+    li $t5, 1
+    sw $t5, boss_direction
+    j boss_check_shoot
+    
+boss_bounce_left:
+    li $t0, 37
+    sw $t0, boss_x
+    li $t5, -1
+    sw $t5, boss_direction
+
+boss_check_shoot:
+    # Sistema de disparo
+    lw $t0, boss_shoot_counter
+    addi $t0, $t0, 1
+    sw $t0, boss_shoot_counter
+    
+    lw $t1, BOSS_SHOOT_RATE
+    blt $t0, $t1, boss_no_shoot
+    
+    # Resetear contador y disparar
+    sw $zero, boss_shoot_counter
+    jal boss_shoot
+
+boss_no_shoot:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== BOSS DISPARA 3 BALAS =====
+boss_shoot:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    # Posición del boss
+    lw $t4, boss_x
+    lw $t5, boss_y
+    
+    # Calcular Y de disparo (debajo del boss)
+    addi $t5, $t5, 27
+    addi $t5, $t5, 2
+    
+    # BALA IZQUIERDA (desde x + 3)
+    la $t1, bullet_0
+    lw $t2, 0($t1)
+    bnez $t2, try_bullet_1_left
+    
+    # Slot libre para bala izquierda
+    li $t3, 1
+    sw $t3, 0($t1)
+    
+    addi $t6, $t4, 3        # Posición x izquierda
+    sw $t6, 4($t1)
+    sw $t5, 8($t1)
+    sw $t6, 12($t1)
+    sw $t5, 16($t1)
+    j boss_shoot_center
+
+try_bullet_1_left:
+    la $t1, bullet_1
+    lw $t2, 0($t1)
+    bnez $t2, boss_shoot_center
+    
+    li $t3, 1
+    sw $t3, 0($t1)
+    
+    addi $t6, $t4, 3
+    sw $t6, 4($t1)
+    sw $t5, 8($t1)
+    sw $t6, 12($t1)
+    sw $t5, 16($t1)
+
+boss_shoot_center:
+    # BALA CENTRAL (desde x + 13, el centro)
+    la $t1, bullet_2
+    lw $t2, 0($t1)
+    bnez $t2, try_bullet_3_center
+    
+    # Slot libre para bala central
+    li $t3, 1
+    sw $t3, 0($t1)
+    
+    addi $t6, $t4, 12       # Centro del boss (27/2 ? 13)
+    sw $t6, 4($t1)
+    sw $t5, 8($t1)
+    sw $t6, 12($t1)
+    sw $t5, 16($t1)
+    j boss_shoot_right
+
+try_bullet_3_center:
+    la $t1, bullet_3
+    lw $t2, 0($t1)
+    bnez $t2, boss_shoot_right
+    
+    li $t3, 1
+    sw $t3, 0($t1)
+    
+    addi $t6, $t4, 12
+    sw $t6, 4($t1)
+    sw $t5, 8($t1)
+    sw $t6, 12($t1)
+    sw $t5, 16($t1)
+
+boss_shoot_right:
+    # BALA DERECHA (desde x + 21)
+    la $t1, bullet_4
+    lw $t2, 0($t1)
+    bnez $t2, try_bullet_0_right
+    
+    # Slot libre para bala derecha
+    li $t3, 1
+    sw $t3, 0($t1)
+    
+    addi $t6, $t4, 21       # Posición x derecha
+    sw $t6, 4($t1)
+    sw $t5, 8($t1)
+    sw $t6, 12($t1)
+    sw $t5, 16($t1)
+    j boss_shoot_done
+
+try_bullet_0_right:
+    # Si bullet_4 está ocupada, intentar usar bullet_0 para la derecha
+    la $t1, bullet_0
+    lw $t2, 0($t1)
+    bnez $t2, boss_shoot_done
+    
+    li $t3, 1
+    sw $t3, 0($t1)
+    
+    addi $t6, $t4, 21
+    sw $t6, 4($t1)
+    sw $t5, 8($t1)
+    sw $t6, 12($t1)
+    sw $t5, 16($t1)
+
+boss_shoot_done:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== DIBUJAR BOSS =====
+draw_boss:
+    addi $sp, $sp, -20
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    
+    # Borrar posición anterior
+    lw $a0, boss_old_x
+    lw $a1, boss_old_y
+    jal erase_boss
+    
+    # Dibujar en nueva posición
+    lw $a0, boss_x
+    lw $a1, boss_y
+    jal draw_boss_at
+    
+    lw $s3, 16($sp)
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr $ra
+
+# ===== BORRAR BOSS =====
+erase_boss:
+    addi $sp, $sp, -20
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    
+    move $s0, $a0
+    move $s1, $a1
+    lw $s2, BOSS_SIZE
+    
+    li $t5, 0
+    
+erase_boss_y:
+    bge $t5, $s2, erase_boss_done
+    
+    li $t6, 0
+    
+erase_boss_x:
+    bge $t6, $s2, erase_boss_next_y
+    
+    # Calcular posición absoluta
+    add $a0, $s0, $t6
+    add $a1, $s1, $t5
+    
+    # Verificar que esté en pantalla
+    bltz $a1, skip_erase_boss_pixel
+    li $t9, 64
+    bge $a1, $t9, skip_erase_boss_pixel
+    
+    addi $sp, $sp, -12
+    sw $t5, 0($sp)
+    sw $t6, 4($sp)
+    sw $ra, 8($sp)
+    
+    jal get_background_color
+    move $s6, $v0
+    
+    lw $ra, 8($sp)
+    lw $t6, 4($sp)
+    lw $t5, 0($sp)
+    addi $sp, $sp, 12
+    
+    add $s7, $s1, $t5
+    sll $s7, $s7, 6
+    add $s7, $s7, $s0
+    add $s7, $s7, $t6
+    sll $s7, $s7, 2
+    add $s7, $gp, $s7
+    
+    sw $s6, 0($s7)
+
+skip_erase_boss_pixel:
+    addi $t6, $t6, 1
+    j erase_boss_x
+
+erase_boss_next_y:
+    addi $t5, $t5, 1
+    j erase_boss_y
+
+erase_boss_done:
+    lw $s3, 16($sp)
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr $ra
+
+# ===== DIBUJAR BOSS EN POSICIÓN =====
+draw_boss_at:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    move $t0, $a0
+    move $t1, $a1
+    lw $t2, BOSS_SIZE
+    
+    la $s0, boss_sprite
+    lw $s1, boss_green_light
+    lw $s2, boss_green_dark
+    lw $s3, boss_white
+    
+    li $t4, 0
+    
+draw_boss_y:
+    bge $t4, $t2, draw_boss_done
+    
+    add $t5, $t1, $t4
+    li $t6, 64
+    bge $t5, $t6, draw_boss_next_y
+    bltz $t5, draw_boss_next_y
+    
+    li $t6, 0
+    
+draw_boss_x:
+    bge $t6, $t2, draw_boss_next_y
+    
+    # Calcular índice sprite (Y * 27 + X)
+    li $t7, 27
+    mul $t8, $t4, $t7
+    add $t8, $t8, $t6
+    add $t9, $s0, $t8
+    lb $t9, 0($t9)
+    
+    beqz $t9, skip_boss_pixel
+    
+    li $a0, 1
+    beq $t9, $a0, use_boss_green_light
+    li $a0, 2
+    beq $t9, $a0, use_boss_green_dark
+    li $a0, 3
+    beq $t9, $a0, use_boss_white
+    j skip_boss_pixel
+    
+use_boss_green_light:
+    move $a1, $s1
+    j draw_boss_pixel
+use_boss_green_dark:
+    move $a1, $s2
+    j draw_boss_pixel
+use_boss_white:
+    move $a1, $s3
+    
+draw_boss_pixel:
+    add $a2, $t1, $t4
+    sll $a2, $a2, 6
+    add $a2, $a2, $t0
+    add $a2, $a2, $t6
+    sll $a2, $a2, 2
+    add $a2, $gp, $a2
+    
+    sw $a1, 0($a2)
+    
+skip_boss_pixel:
+    addi $t6, $t6, 1
+    j draw_boss_x
+
+draw_boss_next_y:
+    addi $t4, $t4, 1
+    j draw_boss_y
+
+draw_boss_done:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== DIBUJAR UN DÍGITO EN POSICIÓN X, Y =====
+# $a0 = dígito (0-9)
+# $a1 = x position
+# $a2 = y position
+draw_digit:
+    addi $sp, $sp, -20
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    
+    # Validar dígito (0-9)
+    bltz $a0, draw_digit_done
+    li $t0, 9
+    bgt $a0, $t0, draw_digit_done
+    
+    move $s0, $a1           # x position
+    move $s1, $a2           # y position
+    
+    # Obtener puntero al sprite del dígito
+    la $t0, digit_table
+    sll $t1, $a0, 2         # dígito * 4
+    add $t0, $t0, $t1
+    lw $s2, 0($t0)          # s2 = puntero al sprite
+    
+    lw $s3, hud_white       # Color blanco
+    
+    li $t4, 0               # Y counter (0-6)
+    
+draw_digit_y:
+    li $t0, 5
+    bge $t4, $t0, draw_digit_done
+    
+    li $t5, 0               # X counter (0-4)
+    
+draw_digit_x:
+    li $t0, 3
+    bge $t5, $t0, draw_digit_next_y
+    
+    # Calcular índice en sprite (Y * 3 + X)
+    li $t0, 3
+    mul $t6, $t4, $t0
+    add $t6, $t6, $t5
+    add $t7, $s2, $t6
+    lb $t7, 0($t7)          # Valor del pixel
+    
+    # Si es 0, es transparente
+    beqz $t7, skip_digit_pixel
+    
+    # Dibujar pixel blanco
+    add $t8, $s1, $t4       # Y total
+    add $t9, $s0, $t5       # X total
+    
+    # Calcular offset en display
+    sll $t8, $t8, 6         # Y * 64
+    add $t8, $t8, $t9       # + X
+    sll $t8, $t8, 2         # * 4
+    add $t8, $gp, $t8
+    
+    sw $s3, 0($t8)
+    
+skip_digit_pixel:
+    addi $t5, $t5, 1
+    j draw_digit_x
+
+draw_digit_next_y:
+    addi $t4, $t4, 1
+    j draw_digit_y
+
+draw_digit_done:
+    lw $s3, 16($sp)
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr $ra
+
+# ===== DIBUJAR NÚMERO COMPLETO =====
+# $a0 = número a dibujar
+# $a1 = x position (esquina superior izquierda)
+# $a2 = y position
+# ===== DIBUJAR NÚMERO COMPLETO =====
+# $a0 = número a dibujar
+# $a1 = x position (esquina superior izquierda)
+# $a2 = y position
+draw_number:
+    addi $sp, $sp, -24
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    sw $s4, 20($sp)
+    
+    move $s0, $a0           # número
+    move $s1, $a1           # x inicial
+    move $s2, $a2           # y
+    
+    # Caso especial: si es 0, dibujar solo un 0
+    bnez $s0, extract_digits
+    
+    li $a0, 0
+    move $a1, $s1
+    move $a2, $s2
+    jal draw_digit
+    j draw_number_done
+    
+extract_digits:
+    # Extraer dígitos usando divisiones sucesivas
+    # Primero contamos cuántos dígitos tiene
+    move $t0, $s0           # copia del número
+    li $s3, 0               # contador de dígitos
+    
+count_loop:
+    beqz $t0, start_drawing
+    li $t1, 10
+    div $t0, $t1
+    mflo $t0                # t0 = t0 / 10
+    addi $s3, $s3, 1
+    j count_loop
+    
+start_drawing:
+    # s3 = cantidad de dígitos
+    # Calcular divisor para extraer primer dígito
+    li $s4, 1               # divisor
+    li $t2, 1               # contador
+    
+calc_divisor:
+    bge $t2, $s3, draw_loop
+    li $t1, 10
+    mul $s4, $s4, $t1       # divisor *= 10
+    addi $t2, $t2, 1
+    j calc_divisor
+    
+draw_loop:
+    beqz $s3, draw_number_done
+    
+    # Extraer dígito más significativo
+    div $s0, $s4
+    mflo $a0                # dígito = número / divisor
+    mfhi $s0                # número = número % divisor
+    
+    # Dibujar dígito
+    move $a1, $s1
+    move $a2, $s2
+    
+    addi $sp, $sp, -8
+    sw $s3, 0($sp)
+    sw $s4, 4($sp)
+    jal draw_digit
+    lw $s4, 4($sp)
+    lw $s3, 0($sp)
+    addi $sp, $sp, 8
+    
+    # Siguiente posición x
+    addi $s1, $s1, 4
+    
+    # Dividir divisor por 10
+    li $t1, 10
+    div $s4, $t1
+    mflo $s4
+    
+    addi $s3, $s3, -1
+    j draw_loop
+
+draw_number_done:
+    lw $s4, 20($sp)
+    lw $s3, 16($sp)
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 24
+    jr $ra
+
+# ===== DIBUJAR UN CORAZÓN =====
+# $a0 = x position
+# $a1 = y position
+draw_heart:
+    addi $sp, $sp, -16
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    
+    move $s0, $a0           # x position
+    move $s1, $a1           # y position
+    
+    la $s2, heart_sprite
+    lw $t9, hud_red         # Color rojo
+    
+    li $t4, 0               # Y counter (0-6)
+    
+draw_heart_y:
+    li $t0, 5
+    bge $t4, $t0, draw_heart_done
+    
+    li $t5, 0               # X counter (0-6)
+    
+draw_heart_x:
+    li $t0, 5
+    bge $t5, $t0, draw_heart_next_y
+    
+    # Calcular índice en sprite (Y * 7 + X)
+    li $t0, 5
+    mul $t6, $t4, $t0
+    add $t6, $t6, $t5
+    add $t7, $s2, $t6
+    lb $t7, 0($t7)          # Valor del pixel
+    
+    # Si es 0, es transparente
+    beqz $t7, skip_heart_pixel
+    
+    # Dibujar pixel rojo
+    add $t8, $s1, $t4       # Y total
+    add $a2, $s0, $t5       # X total
+    
+    # Calcular offset en display
+    sll $t8, $t8, 6         # Y * 64
+    add $t8, $t8, $a2       # + X
+    sll $t8, $t8, 2         # * 4
+    add $t8, $gp, $t8
+    
+    sw $t9, 0($t8)
+    
+skip_heart_pixel:
+    addi $t5, $t5, 1
+    j draw_heart_x
+
+draw_heart_next_y:
+    addi $t4, $t4, 1
+    j draw_heart_y
+
+draw_heart_done:
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 16
+    jr $ra
+
+# ===== DIBUJAR HUD COMPLETO =====
+draw_hud:
+    addi $sp, $sp, -32
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    sw $s4, 20($sp)
+    sw $s5, 24($sp)
+    sw $s6, 28($sp)
+    
+    # Dibujar score arriba a la izquierda (posición 2, 2)
+    lw $a0, player_score
+    li $a1, 2               # x = 2
+    li $a2, 2               # y = 2
+    jal draw_number
+    
+    # BORRAR área de corazones con color de fondo correcto
+    li $s0, 44              # x inicial corazones
+    li $s1, 57              # y inicial corazones
+    
+    # Borrar área de 18x5 píxeles
+    li $s2, 0               # contador Y
+erase_hearts_y:
+    li $t4, 5
+    bge $s2, $t4, draw_hearts_start
+    
+    li $s3, 0               # contador X
+erase_hearts_x:
+    li $t4, 18
+    bge $s3, $t4, erase_hearts_next_y
+    
+    # Calcular posición absoluta
+    add $a0, $s0, $s3       # x
+    add $a1, $s1, $s2       # y
+    
+    # Guardar registros
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    # Obtener color de fondo (mar con patrón)
+    jal get_background_color
+    move $s4, $v0           # guardar color
+    
+    # Restaurar
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    
+    # Dibujar pixel del fondo
+    add $t7, $s1, $s2       # Y total
+    sll $t7, $t7, 6         # * 64
+    add $t7, $t7, $s0       # + X base
+    add $t7, $t7, $s3       # + X offset
+    sll $t7, $t7, 2         # * 4
+    add $t7, $gp, $t7
+    sw $s4, 0($t7)
+    
+    addi $s3, $s3, 1
+    j erase_hearts_x
+
+erase_hearts_next_y:
+    addi $s2, $s2, 1
+    j erase_hearts_y
+
+draw_hearts_start:
+    # Dibujar corazones según vidas actuales
+    lw $t0, player_lives
+    li $s0, 44              # x inicial
+    li $s1, 57              # y
+    
+    # DEBUG: Si lives == 3, dibujar 3 corazones
+    li $t3, 3
+    bne $t0, $t3, check_two_lives
+    
+    # Dibujar los 3 corazones
+    move $a0, $s0
+    move $a1, $s1
+    jal draw_heart
+    
+    addi $a0, $s0, 6
+    move $a1, $s1
+    jal draw_heart
+    
+    addi $a0, $s0, 12
+    move $a1, $s1
+    jal draw_heart
+    j skip_all_hearts
+
+check_two_lives:
+    # Si lives == 2, dibujar 2 corazones
+    li $t3, 2
+    bne $t0, $t3, check_one_life
+    
+    move $a0, $s0
+    move $a1, $s1
+    jal draw_heart
+    
+    addi $a0, $s0, 6
+    move $a1, $s1
+    jal draw_heart
+    j skip_all_hearts
+
+check_one_life:
+    # Si lives == 1, dibujar 1 corazón
+    li $t3, 1
+    bne $t0, $t3, check_zero_lives
+    
+    move $a0, $s0
+    move $a1, $s1
+    jal draw_heart
+    j skip_all_hearts
+
+check_zero_lives:
+    # Si lives == 0, no dibujar nada (ya borrado)
+    
+skip_all_hearts:
+    lw $s6, 28($sp)
+    lw $s5, 24($sp)
+    lw $s4, 20($sp)
+    lw $s3, 16($sp)
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 32
+    jr $ra
+    
 # ===== DELAY =====
 delay:
     li $t0, 20000    

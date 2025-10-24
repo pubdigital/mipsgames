@@ -53,15 +53,37 @@
     obsLane0X: .word 5     # Carril izq: 13 (centro auto) - 8 (mitad cono) = 5
     obsLane1X: .word 24    # Carril centro: 32 - 8 = 24
     obsLane2X: .word 43    # Carril derecho: 51 - 8 = 43
+    
+    # Sistema de múltiples obstáculos (hasta 5 simultáneos)
+    MAX_OBSTACLES: .word 5
+    obstaclesX: .word 0, 0, 0, 0, 0
+    obstaclesY: .word 0, 0, 0, 0, 0
+    obstaclesType: .word 0, 0, 0, 0, 0
+    obstaclesActive: .word 0, 0, 0, 0, 0    # TODOS INACTIVOS al inicio
+    spawnDistance: .word 35
+    currentObsX: .word 0
+    currentObsY: .word 0
+    currentObsType: .word 0
+    currentObsIndex: .word 0
+    lastLane: .word -1          # Último carril usado (-1 = ninguno)
+    lastLane2: .word -1         # Penúltimo carril usado
+    consecutiveSameLane: .word 0 # Contador de carriles consecutivos
 
 .text
 main:
     li $s0, 0x10008000
+    
+    li $t0, 12345
+    sw $t0, randomSeed
+    li $t0, 1
+    sw $t0, frameCounter
    
     # Dibujar fondo gris una sola vez
     li $a0, 0x10008000
     li $a1, 0x5d5d5d
     jal fillScreen
+    
+    jal initObstacles
    
     # Dibujar bordes azules
     li $t0, 0
@@ -136,91 +158,98 @@ addNormalSpeed:
     addi $t8, $t8, 2
     
 moveObstacle:
-    add $s4, $s4, $t8
-    sw $s4, obsY
-   
-    # Reset obstáculo
-    li $t0, 128
-    blt $s4, $t0, skipReset
+    # Mover todos los obstáculos activos
+    li $t9, 0                    # índice del obstáculo
+    la $s6, obstaclesY
+    la $s7, obstaclesActive
     
-    # Reset obst?culo
-    li $t0, 128
-    blt $s4, $t0, skipReset
-   
-    li $s4, -8
-    sw $s4, obsY
-   
+moveObstacleLoop:
+    lw $t0, MAX_OBSTACLES
+    bge $t9, $t0, endMoveObstacles
+    
+    # Verificar si está activo
+    sll $t1, $t9, 2
+    add $t2, $s7, $t1
+    lw $t3, 0($t2)
+    beqz $t3, nextObstacle       # Si no está activo, skip
+    
+    # Mover obstáculo
+    add $t4, $s6, $t1
+    lw $t5, 0($t4)               # Y actual
+    add $t5, $t5, $t8            # Sumar velocidad
+    sw $t5, 0($t4)               # Guardar nueva Y
+    
+    # Verificar si salió de pantalla
+    li $t6, 128
+    blt $t5, $t6, nextObstacle
+    
+    # Desactivar obstáculo
+    sw $zero, 0($t2)
+    
+    # Incrementar score
     lw $t0, score
     addi $t0, $t0, 1
     sw $t0, score
-   
-    # Mezclar semilla con frameCounter y posici?n Y para m?s aleatoriedad
-    lw $t8, randomSeed
-    lw $t9, frameCounter
-    xor $t8, $t8, $t9
-    lw $t7, obsY
-    add $t8, $t8, $t7
-    sw $t8, randomSeed
+    
+nextObstacle:
+    addi $t9, $t9, 1
+    j moveObstacleLoop
 
-    # Elegir tipo aleatorio (0 = cono, 1 = piedra)
-    li $a0, 4
-    jal getRandom
-    sw $v0, obsType
-
-    # Elegir carril aleatorio (0 = izq, 1 = centro, 2 = derecha)
-    lw $t8, randomSeed
-    lw $t9, frameCounter
-    sll $t9, $t9, 3          # Mezcla extra
-    xor $t8, $t8, $t9
-    sw $t8, randomSeed
-    li $a0, 3
-    jal getRandom
-    move $t1, $v0
-
-    beq $t1, 0, setXFarLeft
-    beq $t1, 1, setXLeft
-    beq $t1, 2, setXRight
-   
-    # Elegir tipo aleatorio de obst?culo (0 = cono, 1 = piedra)
-    li $a0, 4
-    jal getRandom
-    sw $v0, obsType
-
-    # Elegir carril aleatorio (0 = izq, 1 = centro, 2 = derecha)
-    li $a0, 3
-    jal getRandom
-    move $t1, $v0
-
-    beq $t1, 0, setXFarLeft
-    beq $t1, 1, setXLeft
-    beq $t1, 2, setXRight
-    li $s3, 43
-    sw $s3, obsX
-    j skipReset
-
-setXFarLeft:
-    lw $s3, obsLane0X
-    sw $s3, obsX
-    j skipReset
-   
-setXLeft:
-    lw $s3, obsLane1X
-    sw $s3, obsX
-    j skipReset
-   
-setXRight:
-    lw $s3, obsLane2X
-    sw $s3, obsX
+endMoveObstacles:
+    # Intentar spawnear nuevo obstáculo
+    jal trySpawnObstacle
 
 skipReset:
     # === FASE 2: DIBUJAR TODO DE UN TIR?N ===
     jal updateScroll
     jal drawTrack         # Dibuja fondo
    
-    # Dibujar obst?culo PRIMERO
-    move $a0, $s3
-    move $a1, $s4
+    li $t9, 0
+    la $s6, obstaclesX
+    la $s7, obstaclesY
+    # Dibujar todos los obstáculos activos
+    li $t9, 0
+    
+drawObstaclesLoop:
+    lw $t0, MAX_OBSTACLES
+    bge $t9, $t0, endDrawObstacles
+    
+    # Verificar si está activo
+    sll $t1, $t9, 2
+    la $t2, obstaclesActive
+    add $t2, $t2, $t1
+    lw $t3, 0($t2)
+    beqz $t3, nextDrawObstacle
+    
+    # Cargar tipo actual
+    la $t2, obstaclesType
+    add $t2, $t2, $t1
+    lw $t4, 0($t2)
+    sw $t4, obsType
+    
+    # Cargar X
+    la $t2, obstaclesX
+    add $t2, $t2, $t1
+    lw $a0, 0($t2)
+    
+    # Cargar Y
+    la $t2, obstaclesY
+    add $t2, $t2, $t1
+    lw $a1, 0($t2)
+    
+    # Guardar índice antes de llamar a drawObstacle
+    sw $t9, currentObsIndex
+    
     jal drawObstacle
+    
+    # Restaurar índice
+    lw $t9, currentObsIndex
+
+nextDrawObstacle:
+    addi $t9, $t9, 1
+    j drawObstaclesLoop
+
+endDrawObstacles:
    
     # Dibujar auto DESPU?S (queda arriba)
     move $a0, $s1
@@ -338,10 +367,35 @@ noKey:
     sw $zero, slowdownActive
 
 checkCollision:
-    bltz $s4, noCol
+    li $t9, 0
+    
+checkCollisionLoop:
+    lw $t0, MAX_OBSTACLES
+    bge $t9, $t0, noCol
+    
+    # Verificar si está activo
+    sll $t1, $t9, 2
+    la $t2, obstaclesActive
+    add $t2, $t2, $t1
+    lw $t3, 0($t2)
+    beqz $t3, nextCollCheck
+    
+    # Cargar Y del obstáculo
+    la $t2, obstaclesY
+    add $t2, $t2, $t1
+    lw $s4, 0($t2)
+    
+    # Verificar rango Y
+    bltz $s4, nextCollCheck
     li $t0, 128
-    bge $s4, $t0, noCol
-   
+    bge $s4, $t0, nextCollCheck
+    
+    # Cargar X del obstáculo
+    la $t2, obstaclesX
+    add $t2, $t2, $t1
+    lw $s3, 0($t2)
+    
+    # Calcular hitbox auto
     move $t0, $s1
     addi $t0, $t0, -10
     move $t1, $s1
@@ -350,7 +404,8 @@ checkCollision:
     addi $t2, $t2, 5
     move $t3, $s2
     addi $t3, $t3, 27
-   
+    
+    # Calcular hitbox obstáculo
     move $t4, $s3
     addi $t4, $t4, 2
     move $t5, $s3
@@ -359,113 +414,76 @@ checkCollision:
     addi $t6, $t6, 2
     move $t7, $s4
     addi $t7, $t7, 14
-   
-    bge $t0, $t5, noCol
-    ble $t1, $t4, noCol
-    bge $t2, $t7, noCol
-    ble $t3, $t6, noCol
-   
-    # COLISIÓN DETECTADA - verificar tipo
-    lw $t0, obsType
-    beq $t0, 3, charcoCollision  # Si es charco (tipo 3), manejar diferente
-    j normalCollision
+    
+    # Verificar colisión
+    bge $t0, $t5, nextCollCheck
+    ble $t1, $t4, nextCollCheck
+    bge $t2, $t7, nextCollCheck
+    ble $t3, $t6, nextCollCheck
+    
+    # ¡COLISIÓN DETECTADA!
+    # Guardar índice
+    sw $t9, currentObsIndex
+    
+    # Cargar tipo del obstáculo
+    sll $t1, $t9, 2
+    la $t2, obstaclesType
+    add $t2, $t2, $t1
+    lw $t0, 0($t2)
+    
+    beq $t0, 3, charcoCollisionMulti
+    j normalCollisionMulti
 
-charcoCollision:
-    # Activar slowdown por 3 segundos
+nextCollCheck:
+    addi $t9, $t9, 1
+    j checkCollisionLoop
+
+charcoCollisionMulti:
+    # Activar slowdown
     li $t0, 1
     sw $t0, slowdownActive
-    li $t0, 30           # ~3 segundos a 50 frames/seg
+    li $t0, 30
     sw $t0, slowdownTimer
-    
-    # FORZAR velocidad del auto a 0 (frenar)
     li $t0, 0
     sw $t0, carSpeed
     move $s5, $t0
     
-    # Resetear obstáculo
-    li $s4, -20
-    sw $s4, obsY
-    
-    # Generar tipo aleatorio: 0, 1, 2 o 3
-    li $a0, 4
-    jal getRandom
-    sw $v0, obsType
-   
-    # Generar carril aleatorio: 0, 1 o 2
-    li $a0, 3
-    jal getRandom
-    move $t1, $v0
-   
-    beq $t1, 0, charcoSetXFarLeft
-    beq $t1, 1, charcoSetXLeft
-    beq $t1, 2, charcoSetXRight
+    # Desactivar este obstáculo
+    lw $t9, currentObsIndex
+    sll $t1, $t9, 2
+    la $t2, obstaclesActive
+    add $t2, $t2, $t1
+    sw $zero, 0($t2)
     j noCol
 
-charcoSetXFarLeft:
-    lw $s3, obsLane0X
-    sw $s3, obsX
-    j noCol
-   
-charcoSetXLeft:
-    lw $s3, obsLane1X
-    sw $s3, obsX
-    j noCol
-   
-charcoSetXRight:
-    lw $s3, obsLane2X
-    sw $s3, obsX
-    j noCol
-
-normalCollision:
+normalCollisionMulti:
+    # Restar vida
     lw $t0, lives
     addi $t0, $t0, -1
     sw $t0, lives
-   
+    
+    # Mostrar mensaje
     li $v0, 4
     la $a0, hitMsg
     syscall
-   
+    
     li $v0, 1
     move $a0, $t0
     syscall
-   
+    
     li $v0, 4
     la $a0, newlineMsg
     syscall
-   
+    
+    # Verificar game over
     beqz $t0, exit
-   
-    li $s4, -20
-    sw $s4, obsY
-   
-    # Generar tipo aleatorio: 0, 1, 2 o 3
-    li $a0, 4
-    jal getRandom
-    sw $v0, obsType
-   
-    # Generar carril aleatorio: 0, 1 o 2
-    li $a0, 3
-    jal getRandom
-    move $t1, $v0
-   
-    beq $t1, 0, collSetXFarLeft
-    beq $t1, 1, collSetXLeft
-    beq $t1, 2, collSetXRight
-    j noCol
-
-collSetXFarLeft:
-    lw $s3, obsLane0X
-    sw $s3, obsX
-    j noCol
-   
-collSetXLeft:
-    lw $s3, obsLane1X
-    sw $s3, obsX
-    j noCol
-   
-collSetXRight:
-    lw $s3, obsLane2X
-    sw $s3, obsX
+    
+    # Desactivar este obstáculo
+    lw $t9, currentObsIndex
+    sll $t1, $t9, 2
+    la $t2, obstaclesActive
+    add $t2, $t2, $t1
+    sw $zero, 0($t2)
     j noCol
 
 noCol:
@@ -474,8 +492,6 @@ noCol:
 delayLoop:
     addi $t0, $t0, -1
     bgtz $t0, delayLoop
-   
-    j loop
    
     j loop
 
@@ -1574,29 +1590,347 @@ getRandom:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
 
-    # Mezclar semilla con frameCounter y direcci?n de stack
+    # Mezclar semilla con frameCounter, stack pointer y tiempo
     lw $t0, randomSeed
     lw $t1, frameCounter
-    addu $t0, $t0, $t1         # addu evita overflow con signo
-    xor  $t0, $t0, $sp
+    
+    # Mezcla más agresiva
+    xor $t0, $t0, $t1
+    sll $t2, $t1, 7
+    xor $t0, $t0, $t2
+    xor $t0, $t0, $sp           # Usar stack pointer
+    
+    # Rotar bits
+    srl $t3, $t0, 13
+    sll $t4, $t0, 19
+    or $t0, $t3, $t4
 
-    # LCG: next = (seed * 1664525 + 1013904223) mod 2^32
+    # LCG mejorado: next = (seed * 1664525 + 1013904223)
     li $t2, 1664525
     multu $t0, $t2
-    mflo $t0                   # parte baja del producto
+    mflo $t0
     li $t3, 1013904223
-    addu $t0, $t0, $t3         # usar addu en lugar de addi (sin overflow)
+    addu $t0, $t0, $t3
+    
+    # Guardar nueva semilla
     sw $t0, randomSeed
 
-    # Mezclar bits altos y bajos
+    # Mezclar bits altos y bajos más agresivamente
     srl $t4, $t0, 16
     xor $t0, $t0, $t4
+    srl $t4, $t0, 8
+    xor $t0, $t0, $t4
 
-    # Tomar m?dulo del rango pedido (0 .. $a0-1)
+    # Tomar módulo del rango pedido
     divu $t0, $a0
     mfhi $v0
 
     lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# Inicializa los obstáculos de forma aleatoria y escalonada
+initObstacles:
+    addi $sp, $sp, -8
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    
+    # Inicializar semilla aleatoria con valor más variable
+    li $t0, 54321
+    lw $t1, frameCounter
+    add $t0, $t0, $t1
+    sw $t0, randomSeed
+    
+    li $s0, 0                   # Índice del obstáculo
+    li $t8, -30                 # Y inicial base
+    
+initObsLoop:
+    lw $t0, MAX_OBSTACLES
+    bge $s0, $t0, endInitObs
+    
+    # Solo activar los primeros 2 obstáculos al inicio
+    li $t9, 2
+    bge $s0, $t9, skipActivation
+    
+    # Activar obstáculo
+    sll $t1, $s0, 2
+    la $t2, obstaclesActive
+    add $t2, $t2, $t1
+    li $t3, 1
+    sw $t3, 0($t2)
+    
+    # Setear Y escalonado (cada uno más arriba)
+    la $t2, obstaclesY
+    add $t2, $t2, $t1
+    li $t3, -70
+    mul $t4, $s0, $t3           # -70 * índice
+    sw $t4, 0($t2)
+    
+    # Generar tipo aleatorio
+    li $a0, 4
+    jal getRandom
+    la $t2, obstaclesType
+    sll $t1, $s0, 2
+    add $t2, $t2, $t1
+    sw $v0, 0($t2)
+    
+    # Generar carril FORZANDO variedad
+    move $a0, $s0
+    jal getInitialLane
+    move $t4, $v0
+    
+    # Actualizar último carril
+    sw $t4, lastLane
+    
+    beq $t4, 0, initLane0
+    beq $t4, 1, initLane1
+    beq $t4, 2, initLane2
+
+initLane0:
+    lw $t5, obsLane0X
+    j saveInitX
+initLane1:
+    lw $t5, obsLane1X
+    j saveInitX
+initLane2:
+    lw $t5, obsLane2X
+
+saveInitX:
+    la $t2, obstaclesX
+    sll $t1, $s0, 2
+    add $t2, $t2, $t1
+    sw $t5, 0($t2)
+    
+skipActivation:
+    addi $s0, $s0, 1
+    j initObsLoop
+
+endInitObs:
+    lw $ra, 0($sp)
+    lw $s0, 4($sp)
+    addi $sp, $sp, 8
+    jr $ra
+
+# Genera carril inicial garantizando variedad
+getInitialLane:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    # $a0 contiene el índice del obstáculo
+    move $t0, $a0
+    
+    # Patrón forzado: cada obstáculo en carril diferente
+    li $t1, 3
+    rem $v0, $t0, $t1           # índice % 3
+    
+    # Añadir un poco de aleatoriedad
+    li $a0, 3
+    jal getRandom
+    add $v0, $v0, $v0           # v0 = (índice % 3) + random(3)
+    li $t1, 3
+    rem $v0, $v0, $t1           # Mantener en rango 0-2
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# Intenta spawnear un nuevo obstáculo
+trySpawnObstacle:
+    addi $sp, $sp, -12
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    
+    # Buscar slot inactivo
+    li $s0, 0
+    la $s1, obstaclesActive
+    
+findInactiveSlot:
+    lw $t0, MAX_OBSTACLES
+    bge $s0, $t0, endSpawn
+    
+    sll $t1, $s0, 2
+    add $t2, $s1, $t1
+    lw $t3, 0($t2)
+    beqz $t3, foundSlot          # Si está inactivo, usar este slot
+    
+    addi $s0, $s0, 1
+    j findInactiveSlot
+
+foundSlot:
+    # Verificar distancia con otros obstáculos
+    jal checkSpawnDistance
+    beqz $v0, endSpawn           # Si está muy cerca, no spawnear
+    
+    # Activar obstáculo
+    sll $t1, $s0, 2
+    la $t2, obstaclesActive
+    add $t2, $t2, $t1
+    li $t3, 1
+    sw $t3, 0($t2)
+    
+    # Setear Y inicial
+    la $t2, obstaclesY
+    add $t2, $t2, $t1
+    li $t3, -20
+    sw $t3, 0($t2)
+    
+    # Generar tipo aleatorio (0-3)
+    li $a0, 4
+    jal getRandom
+    la $t2, obstaclesType
+    sll $t1, $s0, 2
+    add $t2, $t2, $t1
+    sw $v0, 0($t2)
+    
+    # Generar carril aleatorio con anti-repetición
+    jal getRandomLane
+    move $t4, $v0               # Carril seleccionado
+    
+    # Guardar como último carril usado
+    lw $t0, lastLane
+    sw $t0, lastLane2           # Guardar penúltimo
+    sw $t4, lastLane            # Guardar último
+    
+    beq $t4, 0, spawnLane0
+    beq $t4, 1, spawnLane1
+    beq $t4, 2, spawnLane2
+
+spawnLane0:
+    lw $t5, obsLane0X
+    j saveSpawnX
+spawnLane1:
+    lw $t5, obsLane1X
+    j saveSpawnX
+spawnLane2:
+    lw $t5, obsLane2X
+
+saveSpawnX:
+    la $t2, obstaclesX
+    sll $t1, $s0, 2
+    add $t2, $t2, $t1
+    sw $t5, 0($t2)
+
+endSpawn:
+    lw $ra, 0($sp)
+    lw $s0, 4($sp)
+    lw $s1, 8($sp)
+    addi $sp, $sp, 12
+    jr $ra
+    
+    # Genera un carril aleatorio evitando repeticiones
+getRandomLane:
+    addi $sp, $sp, -8
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    
+    # Cargar últimos carriles
+    lw $t0, lastLane
+    lw $t1, lastLane2
+    lw $t2, consecutiveSameLane
+    
+    # Intentar hasta 5 veces conseguir un carril diferente
+    li $s0, 0
+    
+tryGetLane:
+    li $t3, 5
+    bge $s0, $t3, forceRandomLane
+    
+    # Generar carril aleatorio
+    li $a0, 3
+    jal getRandom
+    move $t4, $v0               # Carril candidato
+    
+    # Si es el primer obstáculo, aceptar cualquiera
+    li $t5, -1
+    beq $t0, $t5, acceptLane
+    
+    # Si es diferente al último, aceptar
+    bne $t4, $t0, acceptLane
+    
+    # Si es igual al último, incrementar contador
+    addi $t2, $t2, 1
+    
+    # Si llevamos 2 o más consecutivos, RECHAZAR
+    li $t5, 2
+    bge $t2, $t5, rejectLane
+    
+    # Si solo llevamos 1, hay 50% de aceptar
+    li $a0, 2
+    jal getRandom
+    bnez $v0, acceptLane        # Si random da 1, aceptar
+    
+rejectLane:
+    addi $s0, $s0, 1
+    j tryGetLane
+
+forceRandomLane:
+    # Forzar un carril diferente
+    lw $t0, lastLane
+    addi $t4, $t0, 1
+    li $t5, 3
+    rem $t4, $t4, $t5           # (lastLane + 1) % 3
+    li $t2, 0                   # Resetear contador
+
+acceptLane:
+    # Si el carril es diferente, resetear contador
+    lw $t0, lastLane
+    beq $t4, $t0, keepCounter
+    li $t2, 0
+    
+keepCounter:
+    sw $t2, consecutiveSameLane
+    move $v0, $t4               # Retornar carril
+    
+    lw $ra, 0($sp)
+    lw $s0, 4($sp)
+    addi $sp, $sp, 8
+    jr $ra
+
+# Verifica si hay suficiente espacio para spawnear
+# Verifica si hay suficiente espacio para spawnear
+checkSpawnDistance:
+    addi $sp, $sp, -4
+    sw $s2, 0($sp)
+    
+    li $s2, 0
+    la $t0, obstaclesActive
+    la $t1, obstaclesY
+    lw $t8, spawnDistance       # Cargar distancia mínima
+    
+checkDistLoop:
+    lw $t2, MAX_OBSTACLES
+    bge $s2, $t2, okToSpawn
+    
+    sll $t3, $s2, 2
+    add $t4, $t0, $t3
+    lw $t5, 0($t4)
+    beqz $t5, nextDistCheck     # Si está inactivo, skip
+    
+    # Verificar distancia Y
+    add $t4, $t1, $t3
+    lw $t6, 0($t4)
+    
+    # Calcular distancia absoluta
+    li $t7, -20
+    sub $t9, $t6, $t7           # distancia = obsY - (-20)
+    
+    # Si está demasiado cerca, no spawnear
+    blt $t9, $t8, tooClose
+    
+nextDistCheck:
+    addi $s2, $s2, 1
+    j checkDistLoop
+
+tooClose:
+    li $v0, 0
+    j endDistCheck
+
+okToSpawn:
+    li $v0, 1
+
+endDistCheck:
+    lw $s2, 0($sp)
     addi $sp, $sp, 4
     jr $ra
 

@@ -1,4 +1,4 @@
-# Game 1942 - Version 4.0 
+# Game 1942 - Version 5.0 
 
 .data
     .align 2
@@ -62,6 +62,19 @@ POW_SPAWN_EVERY:     .word 5       # Cada 20 enemigos
 double_shot_active:  .word 0        # Si el power-up está activo
 double_shot_ammo:    .word 0        # Disparos restantes con doble bala
     
+    # Sistema de explosiones
+MAX_EXPLOSIONS:      .word 5        # Máximo 5 explosiones simultáneas
+EXPLOSION_FRAME_RATE: .word 3       # Frames entre cada cambio de sprite
+    
+    # Sistema de Loop/Barrel Roll
+loop_active:         .word 0        # Si está haciendo el loop
+loop_frame:          .word 0        # Frame actual del loop (0-7)
+loop_frame_counter:  .word 0        # Contador para cambiar frames
+LOOP_FRAME_RATE:     .word 2        # Frames entre cada sprite
+loop_cooldown:       .word 0        # Cooldown restante
+LOOP_COOLDOWN_TIME:  .word 600      # 10 segundos (asumiendo ~60 fps)
+loop_invulnerable:   .word 0        # Si está invulnerable durante el loop
+    
     ENEMY_HORIZONTAL_SPEED: .word 1
     ENEMY_DIRECTION_CHANGE_RATE: .word 10   # Cada 60 frames cambia dirección
     
@@ -84,6 +97,8 @@ double_shot_ammo:    .word 0        # Disparos restantes con doble bala
     POINTS_PER_KILL: .word 50
     game_over_flag:  .word 0
     game_won_flag:   .word 0
+    
+    show_ready_screen: .word 1      # Mostrar pantalla READY
     
     # Sistema de Barco Final
     final_ship_active:     .word 0
@@ -159,6 +174,11 @@ double_shot_ammo:    .word 0        # Disparos restantes con doble bala
     # Colores del power-up POW
 pow_green_light:  .word 0x0080D010  # Verde claro (relleno)
 pow_green_dark:   .word 0x00009400  # Verde oscuro (contorno)
+
+    # Colores de explosión
+explosion_white:     .word 0x00FFFFFF  # Blanco (partículas)
+explosion_yellow:    .word 0x00F0BC3C  # Amarillo (núcleo)
+explosion_red:       .word 0x00D82800  # Rojo (fuego)
 
     # Sprites de números 3x5 (0=transparente, 1=blanco)
     .align 2
@@ -299,6 +319,20 @@ heart_sprite:
     .align 4
     player_bullet_9: .word 0, 0, 0, 0, 0
     
+
+# Array de explosiones (active, x, y, frame, frame_counter, size)
+# size: 0=pequeña(9x9), 1=grande(27x27)
+.align 4
+explosion_0: .word 0, 0, 0, 0, 0, 0
+.align 4
+explosion_1: .word 0, 0, 0, 0, 0, 0
+.align 4
+explosion_2: .word 0, 0, 0, 0, 0, 0
+.align 4
+explosion_3: .word 0, 0, 0, 0, 0, 0
+.align 4
+explosion_4: .word 0, 0, 0, 0, 0, 0
+    
     # Sprite de bala del jugador 1x3 (1=amarillo/punta, 2=rojo/cuerpo)
     .align 2
     player_bullet_sprite:
@@ -356,7 +390,214 @@ pow_sprite:
 .byte 0,0,2,2,2,0,0
 .byte 0,0,0,2,0,0,0
     
-    # Sprite del Boss 27x27 (0=transparente, 1=verde claro, 2=verde oscuro, 3=blanco)
+    # Sprites de explosión pequeña 9x9 - Frame 0 (inicio)
+# 0=transparente, 1=rojo, 2=amarillo, 3=blanco
+.align 2
+explosion_small_0:
+.byte 0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,2,0,0,0,0
+.byte 0,0,0,2,2,2,0,0,0
+.byte 0,0,2,2,2,2,2,0,0
+.byte 0,0,0,2,2,2,0,0,0
+.byte 0,0,0,0,2,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0
+
+.align 2
+explosion_small_1:
+.byte 0,0,0,0,0,0,0,0,0
+.byte 0,0,0,3,0,3,0,0,0
+.byte 0,0,3,2,2,2,3,0,0
+.byte 0,3,2,2,2,2,2,3,0
+.byte 0,0,2,2,2,2,2,0,0
+.byte 0,3,2,2,2,2,2,3,0
+.byte 0,0,3,2,2,2,3,0,0
+.byte 0,0,0,3,0,3,0,0,0
+.byte 0,0,0,0,0,0,0,0,0
+
+.align 2
+explosion_small_2:
+.byte 0,0,3,0,0,0,3,0,0
+.byte 0,3,1,3,0,3,1,3,0
+.byte 3,1,2,2,2,2,2,1,3
+.byte 0,3,2,2,2,2,2,3,0
+.byte 0,0,2,2,2,2,2,0,0
+.byte 0,3,2,2,2,2,2,3,0
+.byte 3,1,2,2,2,2,2,1,3
+.byte 0,3,1,3,0,3,1,3,0
+.byte 0,0,3,0,0,0,3,0,0
+
+.align 2
+explosion_small_3:
+.byte 0,3,1,3,0,3,1,3,0
+.byte 3,1,1,2,2,2,1,1,3
+.byte 1,1,2,2,2,2,2,1,1
+.byte 3,2,2,1,2,1,2,2,3
+.byte 0,2,2,2,2,2,2,2,0
+.byte 3,2,2,1,2,1,2,2,3
+.byte 1,1,2,2,2,2,2,1,1
+.byte 3,1,1,2,2,2,1,1,3
+.byte 0,3,1,3,0,3,1,3,0
+
+.align 2
+explosion_small_4:
+.byte 3,1,1,3,0,3,1,1,3
+.byte 1,1,1,2,2,2,1,1,1
+.byte 1,1,2,1,2,1,2,1,1
+.byte 3,2,1,1,2,1,1,2,3
+.byte 0,2,2,2,1,2,2,2,0
+.byte 3,2,1,1,2,1,1,2,3
+.byte 1,1,2,1,2,1,2,1,1
+.byte 1,1,1,2,2,2,1,1,1
+.byte 3,1,1,3,0,3,1,1,3
+
+.align 2
+explosion_small_5:
+.byte 1,1,3,0,0,0,3,1,1
+.byte 1,1,1,3,0,3,1,1,1
+.byte 3,1,1,1,2,1,1,1,3
+.byte 0,3,1,1,2,1,1,3,0
+.byte 0,0,2,2,1,2,2,0,0
+.byte 0,3,1,1,2,1,1,3,0
+.byte 3,1,1,1,2,1,1,1,3
+.byte 1,1,1,3,0,3,1,1,1
+.byte 1,1,3,0,0,0,3,1,1
+
+.align 2
+explosion_small_6:
+.byte 1,3,0,0,0,0,0,3,1
+.byte 3,1,3,0,0,0,3,1,3
+.byte 0,3,1,3,0,3,1,3,0
+.byte 0,0,3,1,1,1,3,0,0
+.byte 0,0,0,1,1,1,0,0,0
+.byte 0,0,3,1,1,1,3,0,0
+.byte 0,3,1,3,0,3,1,3,0
+.byte 3,1,3,0,0,0,3,1,3
+.byte 1,3,0,0,0,0,0,3,1
+
+.align 2
+explosion_small_7:
+.byte 3,0,0,0,0,0,0,0,3
+.byte 0,3,0,0,0,0,0,3,0
+.byte 0,0,3,0,0,0,3,0,0
+.byte 0,0,0,3,0,3,0,0,0
+.byte 0,0,0,0,0,0,0,0,0
+.byte 0,0,0,3,0,3,0,0,0
+.byte 0,0,3,0,0,0,3,0,0
+.byte 0,3,0,0,0,0,0,3,0
+.byte 3,0,0,0,0,0,0,0,3
+
+# Tabla de punteros a sprites de explosión pequeña
+.align 2
+explosion_small_table:
+.word explosion_small_0, explosion_small_1, explosion_small_2, explosion_small_3
+.word explosion_small_4, explosion_small_5, explosion_small_6, explosion_small_7
+
+    # Sprites del loop del jugador 12x8 - 8 frames
+# 0=transparente, 1=gris, 2=blanco, 3=salmón
+# Frame 0: Normal (inicio)
+.align 2
+loop_sprite_0:
+.byte 0,0,0,0,0,1,0,0,0,0,0,0
+.byte 0,0,1,2,1,1,1,2,1,0,0,0
+.byte 0,0,1,2,0,3,0,2,1,0,0,0
+.byte 2,2,2,2,2,3,2,2,2,2,2,0
+.byte 0,1,2,1,1,2,1,1,2,1,0,0
+.byte 0,0,1,1,1,1,1,1,1,0,0,0
+.byte 0,0,0,2,0,0,0,2,0,0,0,0
+.byte 0,0,2,1,1,1,1,1,1,0,0,0
+
+# Frame 1: Empieza a girar (vista 3/4)
+.align 2
+loop_sprite_1:
+.byte 0,0,0,0,1,1,0,0,0,0,0,0
+.byte 0,0,1,2,2,2,2,1,0,0,0,0
+.byte 0,1,2,2,3,3,2,2,1,0,0,0
+.byte 1,2,2,2,3,3,2,2,2,1,0,0
+.byte 0,1,2,2,2,2,2,2,1,0,0,0
+.byte 0,0,1,1,1,1,1,1,0,0,0,0
+.byte 0,0,0,2,2,2,0,0,0,0,0,0
+.byte 0,0,1,1,1,1,1,0,0,0,0,0
+
+# Frame 2: De lado (máxima rotación 1)
+.align 2
+loop_sprite_2:
+.byte 0,0,0,1,1,1,1,0,0,0,0,0
+.byte 0,0,1,2,2,2,2,1,0,0,0,0
+.byte 0,1,2,2,3,3,2,2,1,0,0,0
+.byte 0,1,2,2,2,2,2,2,1,0,0,0
+.byte 0,1,2,2,3,3,2,2,1,0,0,0
+.byte 0,0,1,2,2,2,2,1,0,0,0,0
+.byte 0,0,0,1,1,1,1,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,0,0,0
+
+# Frame 3: Vista desde arriba (invertido)
+.align 2
+loop_sprite_3:
+.byte 0,0,0,1,1,1,1,1,0,0,0,0
+.byte 0,0,1,2,2,2,2,2,1,0,0,0
+.byte 0,1,2,2,2,2,2,2,2,1,0,0
+.byte 1,2,2,2,2,2,2,2,2,2,1,0
+.byte 0,1,2,2,2,2,2,2,2,1,0,0
+.byte 0,0,1,2,2,2,2,2,1,0,0,0
+.byte 0,0,0,1,1,1,1,1,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,0,0,0
+
+# Frame 4: De lado opuesto (máxima rotación 2)
+.align 2
+loop_sprite_4:
+.byte 0,0,0,1,1,1,1,0,0,0,0,0
+.byte 0,0,1,2,2,2,2,1,0,0,0,0
+.byte 0,1,2,2,3,3,2,2,1,0,0,0
+.byte 0,1,2,2,2,2,2,2,1,0,0,0
+.byte 0,1,2,2,3,3,2,2,1,0,0,0
+.byte 0,0,1,2,2,2,2,1,0,0,0,0
+.byte 0,0,0,1,1,1,1,0,0,0,0,0
+.byte 0,0,0,0,0,0,0,0,0,0,0,0
+
+# Frame 5: Volviendo (vista 3/4 opuesta)
+.align 2
+loop_sprite_5:
+.byte 0,0,0,0,1,1,0,0,0,0,0,0
+.byte 0,0,1,2,2,2,2,1,0,0,0,0
+.byte 0,1,2,2,3,3,2,2,1,0,0,0
+.byte 1,2,2,2,3,3,2,2,2,1,0,0
+.byte 0,1,2,2,2,2,2,2,1,0,0,0
+.byte 0,0,1,1,1,1,1,1,0,0,0,0
+.byte 0,0,0,2,2,2,0,0,0,0,0,0
+.byte 0,0,1,1,1,1,1,0,0,0,0,0
+
+# Frame 6: Casi normal
+.align 2
+loop_sprite_6:
+.byte 0,0,0,0,0,1,0,0,0,0,0,0
+.byte 0,0,1,2,1,1,1,2,1,0,0,0
+.byte 0,0,1,2,0,3,0,2,1,0,0,0
+.byte 2,2,2,2,2,3,2,2,2,2,2,0
+.byte 0,1,2,1,1,2,1,1,2,1,0,0
+.byte 0,0,1,1,1,1,1,1,1,0,0,0
+.byte 0,0,0,2,0,0,0,2,0,0,0,0
+.byte 0,0,2,1,1,1,1,1,1,0,0,0
+
+# Frame 7: Normal (fin)
+.align 2
+loop_sprite_7:
+.byte 0,0,0,0,0,1,0,0,0,0,0,0
+.byte 0,0,1,2,1,1,1,2,1,0,0,0
+.byte 0,0,1,2,0,3,0,2,1,0,0,0
+.byte 2,2,2,2,2,3,2,2,2,2,2,0
+.byte 0,1,2,1,1,2,1,1,2,1,0,0
+.byte 0,0,1,1,1,1,1,1,1,0,0,0
+.byte 0,0,0,2,0,0,0,2,0,0,0,0
+.byte 0,0,2,1,1,1,1,1,1,0,0,0
+
+# Tabla de punteros a sprites de loop
+.align 2
+loop_sprite_table:
+.word loop_sprite_0, loop_sprite_1, loop_sprite_2, loop_sprite_3
+.word loop_sprite_4, loop_sprite_5, loop_sprite_6, loop_sprite_7
+            
     # Sprite del Boss 27x27 (0=transparente, 1=verde claro, 2=verde oscuro, 3=blanco)
 .align 2
 boss_sprite:
@@ -532,6 +773,9 @@ main:
     # DIBUJAR HUD AL INICIO
     jal draw_hud
     
+    # DIBUJAR PANTALLA READY
+    jal draw_ready_screen
+    
 game_loop:
     lw $t0, game_over_flag
     bnez $t0, game_over
@@ -543,6 +787,16 @@ game_loop:
     lw $t0, game_timer
     addi $t0, $t0, 1
     sw $t0, game_timer
+    
+    # Verificar si el portaaviones inicial ya desapareció
+    lw $t1, carrier_visible
+    beqz $t1, hide_ready_screen
+    j continue_game_loop
+    
+hide_ready_screen:
+    sw $zero, show_ready_screen
+    
+continue_game_loop:
     
     # Verificar si activar boss final
     lw $t1, FINAL_SHIP_TRIGGER
@@ -583,9 +837,6 @@ continue_normal_game:
     jal update_enemies
     jal update_bullets
     
-    # Actualizar power-up
-    jal update_pow
-    
     # Actualizar boss si está activo
     lw $t0, boss_active
     beqz $t0, no_boss_active
@@ -607,11 +858,18 @@ skip_enemy_spawn:
     # Actualizar power-up
     jal update_pow
     
+    # Actualizar explosiones
+    jal update_explosions
+    
+    # Actualizar barrel roll
+    jal update_loop
+    
     # Actualizar y dibujar barco final si está activo
     lw $t0, final_ship_active
     beqz $t0, skip_final_ship
     jal update_final_ship
     jal draw_final_ship
+    
 skip_final_ship:
     
     jal draw_enemies
@@ -620,6 +878,9 @@ skip_final_ship:
     
     # Dibujar power-up
     jal draw_pow
+    
+    # Dibujar explosiones
+    jal draw_explosions
     
     # DIBUJAR BOSS AL FINAL (encima de todo)
     lw $t0, boss_active
@@ -631,6 +892,12 @@ skip_boss_draw:
     
     # DIBUJAR HUD (lo último, encima de todo)
     jal draw_hud
+    
+    # DIBUJAR PANTALLA READY si está activa
+    lw $t0, show_ready_screen
+    beqz $t0, skip_ready_screen
+    jal draw_ready_screen
+skip_ready_screen:
     
     jal delay
     j game_loop
@@ -1027,6 +1294,360 @@ pow_set_pos:
     sw $t3, pow_old_y
     sw $zero, pow_move_counter
     
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== SPAWEAR EXPLOSIÓN =====
+# $a0 = x position
+# $a1 = y position
+# $a2 = size (0=pequeña 9x9, 1=grande 27x27)
+spawn_explosion:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    # Buscar slot libre
+    la $t0, explosion_0
+    lw $t1, 0($t0)
+    beqz $t1, spawn_explosion_in_slot
+    
+    la $t0, explosion_1
+    lw $t1, 0($t0)
+    beqz $t1, spawn_explosion_in_slot
+    
+    la $t0, explosion_2
+    lw $t1, 0($t0)
+    beqz $t1, spawn_explosion_in_slot
+    
+    la $t0, explosion_3
+    lw $t1, 0($t0)
+    beqz $t1, spawn_explosion_in_slot
+    
+    la $t0, explosion_4
+    lw $t1, 0($t0)
+    beqz $t1, spawn_explosion_done
+    j spawn_explosion_done
+
+spawn_explosion_in_slot:
+    # Activar explosión
+    li $t2, 1
+    sw $t2, 0($t0)      # active
+    sw $a0, 4($t0)      # x
+    sw $a1, 8($t0)      # y
+    sw $zero, 12($t0)   # frame = 0
+    sw $zero, 16($t0)   # frame_counter = 0
+    sw $a2, 20($t0)     # size
+
+spawn_explosion_done:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== ACTUALIZAR EXPLOSIONES =====
+update_explosions:
+    addi $sp, $sp, -8
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    
+    la $s0, explosion_0
+    move $t0, $s0
+    jal update_single_explosion
+    
+    la $s0, explosion_1
+    move $t0, $s0
+    jal update_single_explosion
+    
+    la $s0, explosion_2
+    move $t0, $s0
+    jal update_single_explosion
+    
+    la $s0, explosion_3
+    move $t0, $s0
+    jal update_single_explosion
+    
+    la $s0, explosion_4
+    move $t0, $s0
+    jal update_single_explosion
+    
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 8
+    jr $ra
+
+# ===== ACTUALIZAR UNA EXPLOSIÓN =====
+update_single_explosion:
+    addi $sp, $sp, -4
+    sw $s0, 0($sp)
+    
+    move $s0, $t0
+    
+    lw $t1, 0($s0)
+    beqz $t1, update_explosion_end
+    
+    # Incrementar contador de frames
+    lw $t2, 16($s0)
+    addi $t2, $t2, 1
+    sw $t2, 16($s0)
+    
+    # Verificar si cambiar de frame
+    lw $t3, EXPLOSION_FRAME_RATE
+    blt $t2, $t3, update_explosion_end
+    
+    # Resetear contador
+    sw $zero, 16($s0)
+    
+    # Avanzar al siguiente frame
+    lw $t4, 12($s0)
+    addi $t4, $t4, 1
+    
+    # Si llegó al frame 8, desactivar
+    li $t5, 8
+    bge $t4, $t5, deactivate_explosion
+    
+    # Guardar nuevo frame
+    sw $t4, 12($s0)
+    j update_explosion_end
+
+deactivate_explosion:
+    sw $zero, 0($s0)
+
+update_explosion_end:
+    lw $s0, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== DIBUJAR EXPLOSIONES =====
+draw_explosions:
+    addi $sp, $sp, -8
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    
+    la $s0, explosion_0
+    move $t0, $s0
+    jal draw_single_explosion
+    
+    la $s0, explosion_1
+    move $t0, $s0
+    jal draw_single_explosion
+    
+    la $s0, explosion_2
+    move $t0, $s0
+    jal draw_single_explosion
+    
+    la $s0, explosion_3
+    move $t0, $s0
+    jal draw_single_explosion
+    
+    la $s0, explosion_4
+    move $t0, $s0
+    jal draw_single_explosion
+    
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 8
+    jr $ra
+
+# ===== DIBUJAR UNA EXPLOSIÓN =====
+draw_single_explosion:
+    addi $sp, $sp, -8
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    
+    move $s0, $t0
+    
+    lw $t1, 0($s0)
+    beqz $t1, draw_explosion_end
+    
+    # Obtener tamaño
+    lw $t2, 20($s0)
+    bnez $t2, draw_large_explosion
+    
+    # Dibujar explosión pequeña (9x9)
+    lw $a0, 4($s0)      # x
+    lw $a1, 8($s0)      # y
+    lw $a2, 12($s0)     # frame
+    jal draw_explosion_small_at
+    j draw_explosion_end
+
+draw_large_explosion:
+    # TODO: Implementar explosión grande (27x27)
+    # Por ahora dibujamos pequeña
+    lw $a0, 4($s0)
+    lw $a1, 8($s0)
+    lw $a2, 12($s0)
+    jal draw_explosion_small_at
+
+draw_explosion_end:
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 8
+    jr $ra
+
+# ===== DIBUJAR EXPLOSIÓN PEQUEÑA EN POSICIÓN =====
+# $a0 = x, $a1 = y, $a2 = frame (0-7)
+draw_explosion_small_at:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    move $t0, $a0           # x position
+    move $t1, $a1           # y position
+    move $t2, $a2           # frame
+    
+    # Validar frame
+    bltz $t2, draw_expl_done
+    li $t3, 7
+    bgt $t2, $t3, draw_expl_done
+    
+    # Obtener puntero al sprite del frame
+    la $t3, explosion_small_table
+    sll $t4, $t2, 2         # frame * 4
+    add $t3, $t3, $t4
+    lw $s0, 0($t3)          # s0 = puntero al sprite
+    
+    # Cargar colores
+    lw $s1, explosion_red
+    lw $s2, explosion_yellow
+    lw $s3, explosion_white
+    
+    li $t4, 0               # Y counter (0-8)
+    
+draw_expl_y:
+    li $t5, 9
+    bge $t4, $t5, draw_expl_done
+    
+    li $t5, 0               # X counter (0-8)
+    
+draw_expl_x:
+    li $t6, 9
+    bge $t5, $t6, draw_expl_next_y
+    
+    # Calcular índice en sprite (Y * 9 + X)
+    li $t6, 9
+    mul $t7, $t4, $t6
+    add $t7, $t7, $t5
+    add $t8, $s0, $t7
+    lb $t8, 0($t8)          # Valor del pixel
+    
+    # Si es 0, es transparente
+    beqz $t8, skip_expl_pixel
+    
+    # Seleccionar color según valor
+    li $t9, 1
+    beq $t8, $t9, use_expl_red
+    li $t9, 2
+    beq $t8, $t9, use_expl_yellow
+    li $t9, 3
+    beq $t8, $t9, use_expl_white
+    j skip_expl_pixel
+    
+use_expl_red:
+    move $s4, $s1
+    j draw_expl_pixel
+use_expl_yellow:
+    move $s4, $s2
+    j draw_expl_pixel
+use_expl_white:
+    move $s4, $s3
+    
+draw_expl_pixel:
+    # Calcular offset en display
+    add $s5, $t1, $t4       # Y total
+    add $s6, $t0, $t5       # X total
+    
+    sll $s5, $s5, 6         # Y * 64
+    add $s5, $s5, $s6       # + X
+    sll $s5, $s5, 2         # * 4
+    add $s5, $gp, $s5
+    
+    sw $s4, 0($s5)
+    
+skip_expl_pixel:
+    addi $t5, $t5, 1
+    j draw_expl_x
+
+draw_expl_next_y:
+    addi $t4, $t4, 1
+    j draw_expl_y
+
+draw_expl_done:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== ACTIVAR BARREL ROLL =====
+activate_loop:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    # Verificar cooldown
+    lw $t0, loop_cooldown
+    bnez $t0, activate_loop_done
+    
+    # Verificar que no esté ya activo
+    lw $t1, loop_active
+    bnez $t1, activate_loop_done
+    
+    # Activar loop
+    li $t2, 1
+    sw $t2, loop_active
+    sw $t2, loop_invulnerable
+    sw $zero, loop_frame
+    sw $zero, loop_frame_counter
+    
+    # Establecer cooldown
+    lw $t3, LOOP_COOLDOWN_TIME
+    sw $t3, loop_cooldown
+
+activate_loop_done:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== ACTUALIZAR BARREL ROLL =====
+update_loop:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    # Actualizar cooldown
+    lw $t0, loop_cooldown
+    beqz $t0, check_loop_active
+    addi $t0, $t0, -1
+    sw $t0, loop_cooldown
+    
+check_loop_active:
+    lw $t1, loop_active
+    beqz $t1, update_loop_done
+    
+    # Incrementar contador de frames
+    lw $t2, loop_frame_counter
+    addi $t2, $t2, 1
+    sw $t2, loop_frame_counter
+    
+    # Verificar si cambiar de frame
+    lw $t3, LOOP_FRAME_RATE
+    blt $t2, $t3, update_loop_done
+    
+    # Resetear contador
+    sw $zero, loop_frame_counter
+    
+    # Avanzar al siguiente frame
+    lw $t4, loop_frame
+    addi $t4, $t4, 1
+    
+    # Si llegó al frame 8, desactivar
+    li $t5, 8
+    bge $t4, $t5, deactivate_loop
+    
+    # Guardar nuevo frame
+    sw $t4, loop_frame
+    j update_loop_done
+
+deactivate_loop:
+    sw $zero, loop_active
+    sw $zero, loop_invulnerable
+    sw $zero, loop_frame
+
+update_loop_done:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
@@ -2572,6 +3193,10 @@ check_bullet_collision:
     lw $t4, 0($t3)
     beqz $t4, check_bullet_end
     
+    # Verificar si el jugador es invulnerable (loop activo)
+    lw $t8, loop_invulnerable
+    bnez $t8, check_bullet_end
+    
     lw $t5, 4($t3)      # bullet_x
     lw $t6, 8($t3)      # bullet_y
     lw $t7, BULLET_SIZE
@@ -2865,13 +3490,15 @@ add_points:
     la $a0, newline
     syscall
     
-    # Borrar enemigo
-    lw $a0, 12($t9)
-    lw $a1, 16($t9)
-    lw $a2, 28($t9)         # Pasar tipo de enemigo
-    jal erase_enemy
+    # SPAWEAR EXPLOSIÓN
+    lw $t9, 4($sp)          # Restaurar puntero del enemigo
+    lw $a0, 12($t9)         # x del enemigo
+    lw $a1, 16($t9)         # y del enemigo
+    li $a2, 0               # size = 0 (pequeña)
     
-    # Restaurar punteros
+    jal spawn_explosion
+    
+    # Restaurar punteros de nuevo
     lw $t9, 4($sp)
     lw $t8, 0($sp)
     
@@ -2977,6 +3604,17 @@ test_bullet_hit_boss:
     lw $t9, BOSS_POINTS
     add $t7, $t7, $t9
     sw $t7, player_score
+    
+    # SPAWEAR EXPLOSIÓN GRANDE DEL BOSS
+    lw $a0, boss_x
+    lw $a1, boss_y
+    li $a2, 1               # size = 1 (grande, por ahora usa pequeña)
+    
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    jal spawn_explosion
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
     
     li $v0, 4
     la $a0, msg_score
@@ -3796,7 +4434,22 @@ draw_player_new:
     lw $t9, PLAYER_SIZE      # ancho = 12
     lw $s7, PLAYER_HEIGHT    # alto = 8
     
+    # Verificar si está haciendo loop
+    lw $t8, loop_active
+    beqz $t8, use_normal_sprite
+    
+    # Usar sprite del loop
+    lw $t8, loop_frame
+    la $s0, loop_sprite_table
+    sll $t8, $t8, 2
+    add $s0, $s0, $t8
+    lw $s0, 0($s0)           # s0 = puntero al sprite del loop
+    j draw_player_sprite
+    
+use_normal_sprite:
     la $s0, plane_sprite
+    
+draw_player_sprite:
     lw $s1, plane_gray       # Gris
     lw $s2, plane_white      # Blanco
     lw $s3, plane_salmon     # Salmón
@@ -3865,7 +4518,6 @@ new_done:
     addi $sp, $sp, 8
     jr $ra
 
-# ===== PROCESAR INPUT =====
 process_input:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
@@ -3878,31 +4530,57 @@ process_input:
     li $t0, 0xffff0004
     lw $t2, 0($t0)
     
+    # Verificar tecla K para loop
+    li $t3, 107              # k minúscula
+    beq $t2, $t3, do_loop
+    li $t3, 75               # K mayúscula
+    beq $t2, $t3, do_loop
+    
+    # Verificar W (arriba)
     li $t3, 119
     beq $t2, $t3, move_up
     li $t3, 87
     beq $t2, $t3, move_up
+    
+    # Verificar S (abajo)
     li $t3, 115
     beq $t2, $t3, move_down
     li $t3, 83
     beq $t2, $t3, move_down
+    
+    # Verificar A (izquierda)
     li $t3, 97
     beq $t2, $t3, move_left
     li $t3, 65
     beq $t2, $t3, move_left
+    
+    # Verificar D (derecha)
     li $t3, 100
     beq $t2, $t3, move_right
     li $t3, 68
     beq $t2, $t3, move_right
+    
+    # Verificar J (disparar)
     li $t3, 106
     beq $t2, $t3, shoot
     li $t3, 74
     beq $t2, $t3, shoot
+    
+    j no_input
+
+do_loop:
+    jal activate_loop
     j no_input
 
 shoot:
     jal spawn_player_bullet
     j no_input
+
+check_movement:
+    li $t3, 119              # w
+    beq $t2, $t3, move_up
+    li $t3, 87               # W
+    beq $t2, $t3, move_up
 
 move_up:
     lw $t0, player_y
@@ -4315,6 +4993,478 @@ draw_boss_done:
     addi $sp, $sp, 4
     jr $ra
 
+# ===== DIBUJAR PANTALLA READY =====
+draw_ready_screen:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    # Dibujar "READY" centrado (Y=26)
+    # R (x=19)
+    li $a0, 19
+    li $a1, 26
+    jal draw_letter_R
+    
+    # E (x=23)
+    li $a0, 23
+    li $a1, 26
+    jal draw_letter_E
+    
+    # A (x=27)
+    li $a0, 27
+    li $a1, 26
+    jal draw_letter_A
+    
+    # D (x=31)
+    li $a0, 31
+    li $a1, 26
+    jal draw_letter_D
+    
+    # Y (x=35)
+    li $a0, 35
+    li $a1, 26
+    jal draw_letter_Y
+    
+    # Dibujar "PLAYER 1" centrado (Y=33)
+    # P (x=20)
+    li $a0, 20
+    li $a1, 33
+    jal draw_letter_P
+    
+    # L (x=24)
+    li $a0, 24
+    li $a1, 33
+    jal draw_letter_L
+    
+    # A (x=28)
+    li $a0, 28
+    li $a1, 33
+    jal draw_letter_A
+    
+    # Y (x=32)
+    li $a0, 32
+    li $a1, 33
+    jal draw_letter_Y
+    
+    # E (x=36)
+    li $a0, 36
+    li $a1, 33
+    jal draw_letter_E
+    
+    # R (x=40)
+    li $a0, 40
+    li $a1, 33
+    jal draw_letter_R
+    
+    # (espacio)
+    
+    # 1 (x=46)
+    li $a0, 1
+    li $a1, 46
+    li $a2, 33
+    jal draw_digit
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# ===== DIBUJAR LETRA R =====
+# $a0 = x, $a1 = y
+draw_letter_R:
+    addi $sp, $sp, -20
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    
+    move $s0, $a0
+    move $s1, $a1
+    lw $s2, hud_white
+    
+    # Patrón de R (3x5)
+    # 111
+    # 101
+    # 111
+    # 101
+    # 101
+    
+    # Fila 0
+    add $t0, $s0, 0
+    add $t1, $s1, 0
+    jal draw_text_pixel
+    add $t0, $s0, 1
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    # Fila 1
+    add $t0, $s0, 0
+    add $t1, $s1, 1
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    # Fila 2
+    add $t0, $s0, 0
+    add $t1, $s1, 2
+    jal draw_text_pixel
+    add $t0, $s0, 1
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    # Fila 3
+    add $t0, $s0, 0
+    add $t1, $s1, 3
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    # Fila 4
+    add $t0, $s0, 0
+    add $t1, $s1, 4
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    lw $s3, 16($sp)
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr $ra
+
+# ===== DIBUJAR LETRA E =====
+draw_letter_E:
+    addi $sp, $sp, -20
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    
+    move $s0, $a0
+    move $s1, $a1
+    lw $s2, hud_white
+    
+    # Fila 0
+    add $t0, $s0, 0
+    add $t1, $s1, 0
+    jal draw_text_pixel
+    add $t0, $s0, 1
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    # Fila 1
+    add $t0, $s0, 0
+    add $t1, $s1, 1
+    jal draw_text_pixel
+    
+    # Fila 2
+    add $t0, $s0, 0
+    add $t1, $s1, 2
+    jal draw_text_pixel
+    add $t0, $s0, 1
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    # Fila 3
+    add $t0, $s0, 0
+    add $t1, $s1, 3
+    jal draw_text_pixel
+    
+    # Fila 4
+    add $t0, $s0, 0
+    add $t1, $s1, 4
+    jal draw_text_pixel
+    add $t0, $s0, 1
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    lw $s3, 16($sp)
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr $ra
+
+# ===== DIBUJAR LETRA A =====
+draw_letter_A:
+    addi $sp, $sp, -20
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    
+    move $s0, $a0
+    move $s1, $a1
+    lw $s2, hud_white
+    
+    # Fila 0
+    add $t0, $s0, 0
+    add $t1, $s1, 0
+    jal draw_text_pixel
+    add $t0, $s0, 1
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    # Fila 1
+    add $t0, $s0, 0
+    add $t1, $s1, 1
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    # Fila 2
+    add $t0, $s0, 0
+    add $t1, $s1, 2
+    jal draw_text_pixel
+    add $t0, $s0, 1
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    # Fila 3
+    add $t0, $s0, 0
+    add $t1, $s1, 3
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    # Fila 4
+    add $t0, $s0, 0
+    add $t1, $s1, 4
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    lw $s3, 16($sp)
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr $ra
+
+# ===== DIBUJAR LETRA D =====
+draw_letter_D:
+    addi $sp, $sp, -20
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    
+    move $s0, $a0
+    move $s1, $a1
+    lw $s2, hud_white
+    
+    # Fila 0
+    add $t0, $s0, 0
+    add $t1, $s1, 0
+    jal draw_text_pixel
+    add $t0, $s0, 1
+    jal draw_text_pixel
+    
+    # Fila 1
+    add $t0, $s0, 0
+    add $t1, $s1, 1
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    # Fila 2
+    add $t0, $s0, 0
+    add $t1, $s1, 2
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    # Fila 3
+    add $t0, $s0, 0
+    add $t1, $s1, 3
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    # Fila 4
+    add $t0, $s0, 0
+    add $t1, $s1, 4
+    jal draw_text_pixel
+    add $t0, $s0, 1
+    jal draw_text_pixel
+    
+    lw $s3, 16($sp)
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr $ra
+
+# ===== DIBUJAR LETRA Y =====
+draw_letter_Y:
+    addi $sp, $sp, -20
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    
+    move $s0, $a0
+    move $s1, $a1
+    lw $s2, hud_white
+    
+    # Fila 0
+    add $t0, $s0, 0
+    add $t1, $s1, 0
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    # Fila 1
+    add $t0, $s0, 0
+    add $t1, $s1, 1
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    # Fila 2
+    add $t0, $s0, 1
+    add $t1, $s1, 2
+    jal draw_text_pixel
+    
+    # Fila 3
+    add $t0, $s0, 1
+    add $t1, $s1, 3
+    jal draw_text_pixel
+    
+    # Fila 4
+    add $t0, $s0, 1
+    add $t1, $s1, 4
+    jal draw_text_pixel
+    
+    lw $s3, 16($sp)
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr $ra
+
+# ===== DIBUJAR LETRA P =====
+draw_letter_P:
+    addi $sp, $sp, -20
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    
+    move $s0, $a0
+    move $s1, $a1
+    lw $s2, hud_white
+    
+    # Fila 0
+    add $t0, $s0, 0
+    add $t1, $s1, 0
+    jal draw_text_pixel
+    add $t0, $s0, 1
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    # Fila 1
+    add $t0, $s0, 0
+    add $t1, $s1, 1
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    # Fila 2
+    add $t0, $s0, 0
+    add $t1, $s1, 2
+    jal draw_text_pixel
+    add $t0, $s0, 1
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    # Fila 3
+    add $t0, $s0, 0
+    add $t1, $s1, 3
+    jal draw_text_pixel
+    
+    # Fila 4
+    add $t0, $s0, 0
+    add $t1, $s1, 4
+    jal draw_text_pixel
+    
+    lw $s3, 16($sp)
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr $ra
+
+# ===== DIBUJAR LETRA L =====
+draw_letter_L:
+    addi $sp, $sp, -20
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    
+    move $s0, $a0
+    move $s1, $a1
+    lw $s2, hud_white
+    
+    # Fila 0-3: línea vertical izquierda
+    add $t0, $s0, 0
+    add $t1, $s1, 0
+    jal draw_text_pixel
+    add $t1, $s1, 1
+    jal draw_text_pixel
+    add $t1, $s1, 2
+    jal draw_text_pixel
+    add $t1, $s1, 3
+    jal draw_text_pixel
+    
+    # Fila 4: línea horizontal
+    add $t1, $s1, 4
+    jal draw_text_pixel
+    add $t0, $s0, 1
+    jal draw_text_pixel
+    add $t0, $s0, 2
+    jal draw_text_pixel
+    
+    lw $s3, 16($sp)
+    lw $s2, 12($sp)
+    lw $s1, 8($sp)
+    lw $s0, 4($sp)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr $ra
+
+# ===== DIBUJAR PIXEL DE TEXTO =====
+# $t0 = x, $t1 = y, $s2 = color
+draw_text_pixel:
+    sll $t2, $t1, 6
+    add $t2, $t2, $t0
+    sll $t2, $t2, 2
+    add $t2, $gp, $t2
+    sw $s2, 0($t2)
+    jr $ra
+
 # ===== DIBUJAR UN DÍGITO EN POSICIÓN X, Y =====
 # $a0 = dígito (0-9)
 # $a1 = x position
@@ -4576,45 +5726,31 @@ draw_hud:
     li $a2, 2               # y = 2
     jal draw_number
     
-    # BORRAR área de corazones con color de fondo correcto
+    # BORRAR área de corazones con color de mar oscuro
     li $s0, 44              # x inicial corazones
     li $s1, 57              # y inicial corazones
+    la $t9, sea_colors
+    lw $s4, 0($t9)          # color de mar (azul oscuro)
     
     # Borrar área de 18x5 píxeles
     li $s2, 0               # contador Y
 erase_hearts_y:
     li $t4, 5
-    bge $s2, $t4, draw_hearts_start
+    bge $s2, $t4, draw_loop_indicator
     
     li $s3, 0               # contador X
 erase_hearts_x:
     li $t4, 18
     bge $s3, $t4, erase_hearts_next_y
     
-    # Calcular posición absoluta
-    add $a0, $s0, $s3       # x
-    add $a1, $s1, $s2       # y
-    
-    # Guardar registros
-    addi $sp, $sp, -4
-    sw $ra, 0($sp)
-    
-    # Obtener color de fondo (mar con patrón)
-    jal get_background_color
-    move $s4, $v0           # guardar color
-    
-    # Restaurar
-    lw $ra, 0($sp)
-    addi $sp, $sp, 4
-    
-    # Dibujar pixel del fondo
+    # Calcular offset y dibujar
     add $t7, $s1, $s2       # Y total
     sll $t7, $t7, 6         # * 64
     add $t7, $t7, $s0       # + X base
     add $t7, $t7, $s3       # + X offset
     sll $t7, $t7, 2         # * 4
     add $t7, $gp, $t7
-    sw $s4, 0($t7)
+    sw $s4, 0($t7)          # dibujar color de mar
     
     addi $s3, $s3, 1
     j erase_hearts_x
@@ -4622,6 +5758,53 @@ erase_hearts_x:
 erase_hearts_next_y:
     addi $s2, $s2, 1
     j erase_hearts_y
+
+draw_loop_indicator:
+    # DIBUJAR INDICADOR DE LOOP (esquina superior derecha)
+    lw $t0, loop_cooldown
+    beqz $t0, draw_loop_ready
+    
+    # Cooldown activo - dibujar barra roja
+    li $t1, 58              # x = 58 (esquina superior derecha)
+    li $t2, 2               # y = 2
+    lw $t3, hud_red
+    
+    # Dibujar 4 píxeles rojos (cooldown)
+    li $t4, 0
+draw_cooldown_pixels:
+    li $t5, 4
+    bge $t4, $t5, draw_hearts_start
+    
+    add $t6, $t2, $t4
+    sll $t7, $t6, 6
+    add $t7, $t7, $t1
+    sll $t7, $t7, 2
+    add $t7, $gp, $t7
+    sw $t3, 0($t7)
+    
+    addi $t4, $t4, 1
+    j draw_cooldown_pixels
+
+draw_loop_ready:
+    # Loop disponible - dibujar barra verde
+    li $t1, 58
+    li $t2, 2
+    lw $t3, pow_green_light
+    
+    li $t4, 0
+draw_ready_pixels:
+    li $t5, 4
+    bge $t4, $t5, draw_hearts_start
+    
+    add $t6, $t2, $t4
+    sll $t7, $t6, 6
+    add $t7, $t7, $t1
+    sll $t7, $t7, 2
+    add $t7, $gp, $t7
+    sw $t3, 0($t7)
+    
+    addi $t4, $t4, 1
+    j draw_ready_pixels
 
 draw_hearts_start:
     # Dibujar corazones según vidas actuales
@@ -4688,7 +5871,7 @@ skip_all_hearts:
     
 # ===== DELAY =====
 delay:
-    li $t0, 20000    
+    li $t0, 80000    
 delay_loop:
     addi $t0, $t0, -1
     bnez $t0, delay_loop

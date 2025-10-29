@@ -99,12 +99,10 @@ Esta configuración crea una pantalla virtual de **64x64 píxeles** donde se ren
 - Mensajes de estado (kills, puntaje, victoria).
 
 ### Versión 5.0 – Versión Final
-- Pantalla de inicio con instrucciones.
-- Menú de selección de dificultad.
+- Implementación de HUD.
 - Mejoras en animaciones (explosiones, efectos).
-- Sistema de high scores.
+- Sistema de power-ups.
 - Optimizaciones finales de rendimiento.
-- Efectos de sonido y música de fondo (opcional).
 
 ## 📝 Instrucciones de Uso
 
@@ -134,4 +132,4 @@ Para facilitar las pruebas, se pueden modificar las siguientes constantes en el 
 - `ENEMY_SPAWN_RATE`: Modificar velocidad de aparición de enemigos
 
 ---
-**Versión Actual:** 3.0 (Beta)  
+**Versión Actual:** 5.0 (Final)  

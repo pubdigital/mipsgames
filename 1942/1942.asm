@@ -886,6 +886,7 @@ skip_final_ship:
     lw $t0, boss_active
     beqz $t0, skip_boss_draw
     jal draw_boss
+    
 skip_boss_draw:
     
     jal draw_player_new
@@ -3650,6 +3651,17 @@ test_boss_end:
 
 # ===== MANEJAR IMPACTO =====
 handle_hit:
+    # SPAWEAR EXPLOSIÓN DEL JUGADOR
+    lw $a0, player_x
+    lw $a1, player_y
+    li $a2, 0               # size = 0 (pequeña)
+    
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    jal spawn_explosion
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    
     lw $t0, player_lives
     addi $t0, $t0, -1
     sw $t0, player_lives

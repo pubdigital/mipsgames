@@ -5883,7 +5883,7 @@ skip_all_hearts:
     
 # ===== DELAY =====
 delay:
-    li $t0, 80000    
+    li $t0, 20000    
 delay_loop:
     addi $t0, $t0, -1
     bnez $t0, delay_loop

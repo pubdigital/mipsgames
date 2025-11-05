@@ -3,7 +3,7 @@
 .include "data/objects_id.asm"
 .include "data/sprites/paddle_sprites.asm"
 .include "data/sprites/block_sprites.asm"
-.include "data/sprites/ball_sprite.asm"
+.include "data/sprites/ball_sprite.asm"  # <--- AÑADIR ESTA LÍNEA
 
 .text
 .globl main

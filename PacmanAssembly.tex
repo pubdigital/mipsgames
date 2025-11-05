@@ -1,0 +1,251 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\geometry{a4paper, margin=1in}
+
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mipsstyle}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegray},
+    keywordstyle=\color{blue},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    language=Assembler,
+    morekeywords={include, data, text, macro, end_macro, word, space, asciiz, la, lw, sw, addi, subi, add, sub, mul, div, move, li, syscall, jr, j, jal, beq, bne, blt, bgt, bge, ble, bgez, bltz, bnez, beqz}
+}
+
+\title{\textbf{Documentación Técnica Integral de Juego Pac-Man en MIPS Assembly}}
+\author{Dana Cejas, Tobias Leanza, Anna Smitarello, Santiago Pricco, Ignacio Giovanetti}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Estructura de Archivos y Registros Globales}
+
+El juego está desarrollado bajo una arquitectura modular en \textbf{MIPS Assembly}, con un sistema de coordenadas basado en píxeles y una pantalla de $\approx 64 \times 80$ unidades.
+
+\subsection{Estructura de Datos Central (\texttt{Posicao})}
+La variable \texttt{Posicao} es el vector central para el estado del juego.
+
+\begin{center}
+\begin{tabular}{|c|c|c|l|}
+\hline
+\textbf{Offset (Bytes)} & \textbf{Personaje} & \textbf{Propósito} & \textbf{Detalle} \\
+\hline
+0 – 7 & Pac-Man & Coordenadas (X, Y) & \texttt{Posicao+0} (X), \texttt{Posicao+4} (Y) \\
+8 – 15 & Fantasma 1 & Coordenadas (X, Y) & \\
+16 – 23 & Fantasma 2 & Coordenadas (X, Y) & \\
+24 – 31 & Fantasma 3 & Coordenadas (X, Y) & \\
+32 – 39 & Fantasma 4 & Coordenadas (X, Y) & \\
+\hline
+40 – 43 & Pac-Man & Último Comando & \\
+44 – 59 & Fantasmas 1-4 & Último Comando & \\
+\hline
+60 – 63 & \textbf{Flag Power-Up} & Estado de Pac-Man & $\mathbf{0}$ = Normal, $\mathbf{\ne 0}$ = Potenciado ($\mathbf{\$t8}$ en \texttt{comer}) \\
+\hline
+64 – 79 & Fantasmas 1-4 & Contador de Reaparición & Tiempo de muerte (umbral: $\mathbf{15}$) \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsection{Convenciones de Registros Esenciales}
+\begin{itemize}
+    \item \textbf{\texttt{\$s0}:} Utilizado para el \textbf{Color} (RGB Hexadecimal) en rutinas de dibujo (\texttt{draw\_P}).
+    \item \textbf{\texttt{\$s1}, \texttt{\$s2}:} Coordenadas \textbf{X} e \textbf{Y} del personaje o píxel actual.
+    \item \textbf{\texttt{\$s3}:} \textbf{Dirección/Comando} de Movimiento (e.g., ASCII de 'w', 's', 'a', 'd').
+    \item \textbf{\texttt{\$s4}:} Registro de Retorno para análisis (\texttt{AnalisisMapa}), ej. $1$ para pared, $0$ para libre; o valor de punto/fruta.
+    \item \textbf{\texttt{\$s7}:} Dirección base de \texttt{Posicao}.
+    \item \textbf{\texttt{\$t8}:} Copia del \textbf{Flag Power-Up} de Pac-Man (\texttt{Posicao+60}), crucial en la lógica de IA y colisiones.
+\end{itemize}
+
+\section{\texttt{main.asm} – Control de Flujo del Juego}
+
+\subsection{\texttt{.text} – Bucle de Juego (\texttt{Pac\_Man} a \texttt{fimmov})}
+El bucle principal gestiona un \textit{frame} del juego.
+
+\begin{enumerate}
+    \item \textbf{Movimiento de Pac-Man:}
+    \begin{itemize}
+        \item Se carga el comando y coordenadas de Pac-Man.
+        \item Se llama a \texttt{mov\_Pac\_Man()} para mover, comer puntos/frutas y actualizar las coordenadas.
+    \end{itemize}
+    \item \textbf{Lógica de Colisión (Pac-Man $\leftrightarrow$ Fantasmas):}
+    \begin{itemize}
+        \item Se llama a \texttt{comer()}. Esta macro utiliza el flag \texttt{\$t8} para decidir si Pac-Man muere (si $\mathbf{\$t8}=0$) o si come al fantasma (si $\mathbf{\$t8} \ne 0$).
+    \end{itemize}
+    \item \textbf{Verificación de Fin de Juego:}
+    \begin{itemize}
+        \item Se llama a \texttt{victoria()}, que chequea si se han recolectado $\mathbf{218}$ puntos y reinicia el juego si es verdadero.
+    \end{itemize}
+    \item \textbf{Secuencia de Fantasmas (\texttt{Fantasma\_1} a \texttt{Fantasma\_4}):}
+    \begin{itemize}
+        \item Se cargan las coordenadas y el \textit{offset} del comando anterior (\texttt{\$s6}).
+        \item Se llama a \texttt{reaparecer()} (verifica si el contador $\ge 15$).
+        \item Si reaparece, se llama a \texttt{decidir\_el\_color()}, \texttt{decidir\_Ghost()}, y \texttt{mov\_Ghost()}.
+        \item Finalmente, se llama a \texttt{comer()} de nuevo para chequear colisiones después de mover al fantasma.
+    \end{itemize}
+    \item \textbf{Sincronización (\texttt{fimmov}):}
+    \begin{itemize}
+        \item \texttt{syscall} con código $\mathbf{32}$ y valor $\mathbf{75}$ ($\mathbf{ms}$ de pausa) para controlar la velocidad del juego.
+    \end{itemize}
+\end{enumerate}
+
+\section{\texttt{pintar.asm} y \texttt{draw.asm} – Gráficos de Bajo Nivel}
+
+\subsection{\texttt{pintar.asm} – Macro \texttt{draw\_P}}
+Macro fundamental para dibujar un píxel individual en la memoria mapeada.
+
+\begin{itemize}
+    \item \textbf{Registros de Entrada:} \texttt{\$s0} (Color), \texttt{\$s1} (X), \texttt{\$s2} (Y).
+    \item \textbf{Dirección de Memoria (\texttt{\$t0}):} El cálculo es:
+    $$\texttt{BaseAddress} + (\mathbf{X} \times 4) + (\mathbf{Y} \times 256)$$
+    \item \textbf{Lógica:} La coordenada X se multiplica por 4 (\textit{word size}), y la coordenada Y se multiplica por 256 (el número de bytes en una fila) mediante un bucle (\texttt{loop\_y:}). Finalmente, el color (\texttt{\$s0}) se almacena en la dirección calculada (\texttt{sw \$s0,(\$t0)}).
+\end{itemize}
+
+\subsection{\texttt{draw.asm} – Dibujo de Entidades}
+Utiliza \texttt{draw\_P} repetidamente para formar el patrón del personaje.
+
+\begin{itemize}
+    \item \textbf{\texttt{draw\_Pac\_Man}:} Dibuja Pac-Man como un patrón de $\approx 6$ píxeles. La posición de la "boca abierta" se ajusta dinámicamente en función de la dirección de movimiento actual (\texttt{\$s3}) para simular \textbf{animación} (ej. la boca se omite en la dirección 'd' (100) si se mueve hacia la derecha).
+    \item \textbf{\texttt{draw\_Ghost}:} Dibuja el patrón simple de un fantasma (generalmente un cuadrado 2x2, compuesto por 4 píxeles).
+\end{itemize}
+
+\section{\texttt{AnalisisMapa.asm} – Lógica de Colisiones}
+
+Este módulo provee las herramientas para la interacción de los personajes con la geometría del laberinto.
+
+\begin{itemize}
+    \item \textbf{\texttt{carga} (\texttt{\$s4} $\leftarrow$ Color):} Macro auxiliar que implementa la misma lógica de cálculo de dirección que \texttt{draw\_P} pero en reversa, cargando el valor del color del píxel en $(\texttt{\$s1}, \texttt{\$s2})$ en el registro de retorno \texttt{\$s4} (\texttt{lw \$s4,(\$t0)}).
+    \item \textbf{\texttt{next\_Block} (\texttt{\$s4} $\leftarrow$ $0$ o $1$):}
+    \begin{itemize}
+        \item Calcula la posición del píxel $\mathbf{2}$ unidades adelante en la dirección \texttt{\$s3}.
+        \item Llama a \texttt{carga()}.
+        \item Compara el color cargado (\texttt{\$s4}) con el color de la pared (\texttt{16711680} o \texttt{0xFF0000} - Rojo).
+        \item Retorna $\mathbf{1}$ si es pared, $\mathbf{0}$ si es camino libre.
+    \end{itemize}
+    \item \textbf{\texttt{block}:} Lógica de \textbf{detección y gestión de colisiones de pared}.
+    \begin{enumerate}
+        \item Llama a \texttt{next\_Block()} para la dirección actual.
+        \item Si detecta pared (\texttt{\$s4}=1), compara el comando actual (\texttt{\$s3}) con el comando anterior (\texttt{Posicao+40}).
+        \item Si el comando actual es igual al anterior, se asume que está atascado, y se establece \texttt{\$s3} en $\mathbf{0}$ (\textbf{parada forzada}).
+        \item Si es diferente, se revierte al \textbf{comando anterior} y se verifica si ese movimiento es válido. Si no lo es, también se establece $\mathbf{\$s3}=0$.
+    \end{enumerate}
+    \item \textbf{\texttt{bifurcacion} (\texttt{\$s4} $\leftarrow$ $0$ o $1$):}
+    \begin{itemize}
+        \item Verifica si la posición actual (\texttt{\$s1}, \texttt{\$s2}) tiene $\mathbf{3}$ o $\mathbf{4}$ caminos disponibles (no pared) en N, S, E, O.
+        \item El número de caminos disponibles se acumula en \texttt{\$t4}.
+        \item Retorna $\mathbf{1}$ si \texttt{\$t4} $\ge 3$, indicando que el fantasma debe tomar una decisión de IA.
+    \end{itemize}
+\end{itemize}
+
+\section{\texttt{mov.asm} – Lógica de Movimiento y Teletransporte}
+
+\subsection{\texttt{mov\_Ghost} y \texttt{mov\_Pac\_Man}}
+Ambas macros comparten la lógica de movimiento en pasos de $\mathbf{\pm 3}$ unidades por ciclo.
+
+\begin{itemize}
+    \item \textbf{Lógica de Teletransporte:} Se verifica si el personaje está en el túnel lateral (X=61 o X=1) y la dirección (\texttt{\$s3}) corresponde a la salida.
+    \begin{itemize}
+        \item \textbf{Derecha:} Si \texttt{\$s1}=61 y \texttt{\$s3}=100 ('d') $\rightarrow$ Salida por el túnel izquierdo (\texttt{\$s1}=1, \texttt{\$s2}=40).
+        \item \textbf{Izquierda:} Si \texttt{\$s1}=1 y \texttt{\$s3}=97 ('a') $\rightarrow$ Salida por el túnel derecho (\texttt{\$s1}=61, \texttt{\$s2}=40).
+    \end{itemize}
+    \item \textbf{Lógica de \texttt{mov\_Pac\_Man} (Comida):}
+    \begin{itemize}
+        \item \textbf{Puntos:} Llama a \texttt{next\_Block\_punto()}. El valor del punto (\texttt{\$s4}) se suma a \texttt{pontos}.
+        \item \textbf{Frutas/Power Pill:} Llama a \texttt{next\_Block\_fruta()}. Si \texttt{\$s4}=1 (fruta encontrada), establece el flag de Power-Up en \texttt{Posicao+60} a $\mathbf{0}$ (\texttt{sw \$zero, 60(\$s7)}).
+    \end{itemize}
+\end{itemize}
+
+\section{\texttt{desicion\_Ghost.asm} – Inteligencia Artificial (IA)}
+
+El módulo de IA utiliza la aleatoriedad para simular un comportamiento fantasmal impredecible, siempre condicionado a la existencia de una \texttt{bifurcacion()}.
+
+\subsection{\texttt{decidir\_Ghost}}
+Macro de selección de modo:
+\begin{itemize}
+    \item Si \texttt{\$t8} (Flag Power-Up) $\mathbf{= 1}$ (o $\ne 0$), llama a \texttt{decision\_huir()}.
+    \item Si \texttt{\$t8} $\mathbf{= 0}$, llama a \texttt{decision\_Persigue()}.
+\end{itemize}
+
+\subsection{\texttt{decision\_Persigue} (Modo Persecución)}
+\begin{enumerate}
+    \item \textbf{Eje de Movimiento:} Se genera un número aleatorio entre $0$ y $1$. $0 \to$ Eje X, $1 \to$ Eje Y.
+    \item \textbf{Lógica 4/5 (Perseguir):} Se genera un número aleatorio entre $0$ y $4$ (\texttt{li \$a1, 5, syscall 42}).
+    \begin{itemize}
+        \item Si el resultado es $0, 1, 2, 3$ ($\mathbf{80\%}$ de probabilidad), el fantasma elige la dirección que \textbf{acerca} su coordenada (\texttt{\$s1} o \texttt{\$s2}) a la de Pac-Man (\texttt{\$t1} o \texttt{\$t2}).
+        \item Si el resultado es $4$ ($\mathbf{20\%}$ de probabilidad), el fantasma elige la dirección \textbf{opuesta} (error intencional para evitar IA perfecta).
+    \end{itemize}
+    \item Se repite la lógica si el movimiento elegido (\texttt{\$s3}) resulta ser un muro (\texttt{next\_Block()}).
+\end{enumerate}
+
+
+\subsection{\texttt{decision\_huir} (Modo Huida)}
+Es la lógica inversa de \texttt{decision\_Persigue}. Utiliza la misma aleatoriedad, pero la probabilidad $4/5$ se utiliza para elegir la dirección que \textbf{aleja} al fantasma de Pac-Man.
+
+\subsection{\texttt{esquina}}
+Macro de \textbf{corrección de dirección}. Si el fantasma se mueve en un pasillo y choca con una pared, esta macro lo fuerza a cambiar su movimiento al eje $\mathbf{perpendicular}$ (ej. si choca en X, intenta moverse en Y), garantizando que el fantasma no se quede atascado repitiendo la colisión.
+
+\section{\texttt{comer.asm} – Colisiones y Reaparición}
+
+\subsection{\texttt{comer}}
+Macro que compara la posición de Pac-Man (\texttt{\$s1}, \texttt{\$s2}) con las coordenadas de cada fantasma (\texttt{\$t1}, \texttt{\$t2}).
+
+\begin{itemize}
+    \item \textbf{Pac-Man $\cap$ Fantasma y $\mathbf{\$t8} = 0$ (Normal):}
+    \begin{itemize}
+        \item \textbf{Acción:} Llama a \texttt{apagar()}, reinicia \texttt{pontos} a $0$, y salta a \texttt{Seta} (reinicio de nivel/vida).
+    \end{itemize}
+    \item \textbf{Pac-Man $\cap$ Fantasma y $\mathbf{\$t8} \ne 0$ (Potenciado):}
+    \begin{itemize}
+        \item \textbf{Acción:} Se reescribe la posición (X, Y) del fantasma a su punto de \textbf{respawn inicial} (e.g., F1 $\to$ (4, 4)). El contador de reaparición (\textit{offset} 64-76) se establece en $\mathbf{0}$ (\texttt{sw \$zero, 64(\$s7)}) para iniciar el tiempo de inactividad.
+    \end{itemize}
+\end{itemize}
+
+\subsection{\texttt{reaparecer}}
+Macro que gestiona el temporizador de muerte del fantasma.
+\begin{itemize}
+    \item \textbf{Lógica:} Carga el contador (\texttt{Posicao+64, 68, 72} o \texttt{76}).
+    \item Si el contador es $\mathbf{< 15}$, lo incrementa y retorna $\mathbf{\$s5} = 0$ (\textbf{Inactivo}).
+    \item Si el contador es $\mathbf{\ge 15}$, retorna $\mathbf{\$s5} = 1$ (\textbf{Activo/Reaparece}).
+\end{itemize}
+
+\section{Módulos Auxiliares: \texttt{mapa.asm}, \texttt{punto.asm}, \texttt{control\_puntos.asm}}
+
+\subsection{\texttt{mapa.asm}}
+Contiene la macro \texttt{set\_mapa} que dibuja la geometría estática del laberinto. Utiliza \texttt{draw\_P} con el color Azul (muro) para pintar línea por línea todas las paredes del mapa.
+
+\subsection{\texttt{punto.asm}}
+Contiene la macro \texttt{set\_puntos} que dibuja la distribución inicial de los puntos pequeños y las frutas (Power Pills) en el laberinto. Utiliza \texttt{draw\_P} con el color Amarillo/Naranja (punto) para marcarlos en el mapa de puntos en memoria.
+
+\subsection{\texttt{control\_puntos.asm}}
+Define el manejo de un \textbf{Mapa de Puntos en Memoria} (\texttt{Pontos}) separado del mapa de la pantalla.
+\begin{itemize}
+    \item \textbf{\texttt{draw\_Puntos}:} Escribe el color (\texttt{\$s0}) en el mapa de puntos en memoria (\texttt{Pontos}), \textbf{no en la pantalla de video}. Esto es crucial para marcar qué puntos han sido consumidos (al escribir color negro).
+    \item \textbf{\texttt{cargar\_puntos}:} Lee el color del píxel en la memoria \texttt{Pontos} y lo carga en \texttt{\$s4}. Las macros \texttt{next\_Block\_punto} y \texttt{next\_Block\_fruta} utilizan esta función para verificar la existencia de un punto o fruta antes de que Pac-Man lo "coma".
+\end{itemize}
+
+\end{document}
